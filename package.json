@@ -1,0 +1,28 @@
+{
+  "name": "dsh-plugin-memory",
+  "version": "0.5.0",
+  "description": "Cross-session project memory for DeepSeek Harness: silent turn-end distillation into human-editable Markdown under ~/.dsh/memory, pre-step <system-reminder> injection, and memory_save/search/list/forget tools.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  }
+}
