@@ -47,6 +47,16 @@ For local development: clone, `pnpm install`, then
 
 > Compatibility: developed against DSH `0.1.1-rc.x`; upstream APIs may still move during rc.
 
+### Interface support
+
+| Runtime | Memory core (injection / distillation / tools / storage) | Settings card |
+|---|---|---|
+| `dsh web` (browser GUI) | ✅ | ✅ |
+| `tui` / `headless` | ✅ fully available | ❌ use `settings.yaml` (also hot-reloaded) |
+
+The host half is UI-agnostic; the client half (the settings card) declares `platform: "web"`
+and loads only in the browser UI.
+
 ## How it works
 
 ### Storage

@@ -37,6 +37,15 @@ dsh plugin --profile web add github:justhalfbit/dsh-plugin-memory
 
 > 兼容性：针对 DSH `0.1.1-rc.x` 开发；rc 阶段上游 API 可能变动。
 
+### 界面支持
+
+| 运行形态 | 记忆核心（注入 / 蒸馏 / 工具 / 存储） | 设置卡片 |
+|---|---|---|
+| `dsh web`（浏览器 GUI） | ✅ | ✅ |
+| `tui` / `headless` | ✅ 全部可用 | ❌ 改用 `settings.yaml`（同样热生效） |
+
+host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`，仅在浏览器界面加载。
+
 ## 工作方式
 
 ### 存储
