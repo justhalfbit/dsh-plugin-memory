@@ -56,14 +56,30 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 └── topics/*.md      # 专题文件：自由格式深度笔记（调试手册、API 约定……）
 ```
 
-条目形如 `- [f-1a2b3c4d] 内容 <!-- 2026-09-01 auto -->`——id 由内容哈希派生（天然去重），
-尾注记录日期与来源（`auto` 蒸馏 / `manual` 手动，修剪时 auto 先淘汰）。
+`memories.md` 长这样——id 由内容哈希派生（天然去重），尾注记录日期与来源
+（`auto` 蒸馏 / `manual` 手动，修剪时 auto 先淘汰）：
+
+```markdown
+# Project Memory
+<!-- dsh-memory v1 -->
+
+## Facts
+- [f-32e32a1b] host 进程日志直接输出到启动 dsh web 的终端，无 --log-file 选项 <!-- 2026-09-01 auto -->
+
+## Decisions
+- [d-8c4c11ee] 记忆存储选纯 Markdown 而非 SQLite，为了可 git 管理 <!-- 2026-09-01 manual -->
+
+## Lessons
+## Preferences
+```
+
 专题上限：每项目 24 个文件、单文件 64K 字符、单次写入 16K 字符。
 
 ### 记忆写入（主机制，对齐 Claude Code）
 
-注入的提示指示对话模型在学到持久且非显而易见的东西时主动调用 `memory_save`：用户纠错、
-带理由的决策、来之不易的教训、稳定的项目事实。拿不准就不存；发现过时条目主动 `memory_forget`；
+注入的提示（默认保守档措辞）指示对话模型在学到持久且非显而易见的东西时主动调用
+`memory_save`：用户纠错、带理由的决策、来之不易的教训、稳定的项目事实。拿不准就不存；
+发现过时条目主动 `memory_forget`；
 任务收尾产出成体系知识时用 `memory_write_topic` 整理成专题。积极度由 `proactivity` 设置控制，
 只改提示措辞，机制与护栏不变。
 
@@ -145,7 +161,7 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 
 ```sh
 pnpm install
-node --test test/   # 23 项单测
+pnpm test   # node --test test/，23 项单测
 ```
 
 ## License

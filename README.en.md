@@ -67,14 +67,28 @@ and loads only in the browser UI.
 └── topics/*.md      # topic files: free-form deep notes (debugging playbooks, API conventions…)
 ```
 
-Entries look like `- [f-1a2b3c4d] text <!-- 2026-09-01 auto -->` — the id derives from a
-content hash (natural dedupe); the trailing comment records date and source (`auto` distilled /
-`manual` saved; auto entries are pruned first).
+`memories.md` looks like this — ids derive from a content hash (natural dedupe); the trailing
+comment records date and source (`auto` distilled / `manual` saved; auto entries pruned first):
+
+```markdown
+# Project Memory
+<!-- dsh-memory v1 -->
+
+## Facts
+- [f-32e32a1b] host logs go to the terminal that launched dsh web; no --log-file option <!-- 2026-09-01 auto -->
+
+## Decisions
+- [d-8c4c11ee] memory stays plain Markdown instead of SQLite so it can be git-managed <!-- 2026-09-01 manual -->
+
+## Lessons
+## Preferences
+```
+
 Topic limits: 24 files per project, 64K chars per file, 16K chars per write.
 
 ### Memory writing (primary mechanism, Claude Code-aligned)
 
-The injected prompt instructs the conversation agent to call `memory_save` when it learns
+The injected prompt (default conservative wording) instructs the conversation agent to call `memory_save` when it learns
 something durable and non-obvious: a correction from the user, a decision with its reason, a
 hard-won lesson, a stable project fact — and to skip it when in doubt; to `memory_forget`
 stale entries; and to organize substantial reusable knowledge into topic files with
@@ -170,7 +184,7 @@ nor distilled.
 
 ```sh
 pnpm install
-node --test test/   # 23 unit tests
+pnpm test   # node --test test/, 23 unit tests
 ```
 
 ## License
