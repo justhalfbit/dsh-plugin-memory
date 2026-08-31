@@ -30,7 +30,7 @@ test('entryId is stable across whitespace/case', () => {
   const a = entryId('facts', 'Vite 构建入口在 apps/web')
   const b = entryId('facts', '  vite 构建入口在   APPS/WEB ')
   assert.equal(a, b)
-  assert.match(a, /^f-[0-9a-f]{5}$/u)
+  assert.match(a, /^f-[0-9a-f]{8}$/u)
 })
 
 test('projectSlug is readable and collision-safe', () => {
@@ -258,4 +258,23 @@ test('projectDir resolution is single-flight under concurrent first access', asy
   const dirs = await readdir(join(root, 'projects'))
   assert.deepEqual(dirs.sort(), [projectDirName(cwd)])
   assert.ok(b.parsed.sections.get('facts').entries.some((entry) => entry.text === 'race fact'))
+})
+
+test('applyOps update validates before destroying and reports structured ids', () => {
+  const parsed = emptyParsed()
+  const first = applyOps(parsed, [{ op: 'add', category: 'facts', text: 'keep me', source: 'auto' }], { date: '2026-09-01' })
+  assert.equal(first.ids.added.length, 1)
+  const id = first.ids.added[0]
+  // invalid category: the original entry must survive
+  const badCategory = applyOps(parsed, [{ op: 'update', id, category: 'bogus', text: 'x', source: 'auto' }], { date: '2026-09-01' })
+  assert.equal(badCategory.changed, false)
+  assert.equal(findEntry(parsed, id).entry.text, 'keep me')
+  // empty replacement text: the original entry must survive
+  const emptyText = applyOps(parsed, [{ op: 'update', id, category: 'facts', text: '   ', source: 'auto' }], { date: '2026-09-01' })
+  assert.equal(emptyText.changed, false)
+  assert.equal(findEntry(parsed, id).entry.text, 'keep me')
+  // duplicate add reports the existing id structurally
+  const dup = applyOps(parsed, [{ op: 'add', category: 'facts', text: 'KEEP  me', source: 'manual' }], { date: '2026-09-01' })
+  assert.deepEqual(dup.ids.duplicates, [id])
+  assert.equal(dup.ids.added.length, 0)
 })
