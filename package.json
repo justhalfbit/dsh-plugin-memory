@@ -3,6 +3,22 @@
   "version": "0.5.1",
   "description": "Cross-session project memory for DeepSeek Harness: agent-maintained Markdown memory with progressive-disclosure topic files, digest-deduplicated injection, opt-in silent distillation, six memory tools, and a live settings panel.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justhalfbit/dsh-plugin-memory.git"
+  },
+  "homepage": "https://github.com/justhalfbit/dsh-plugin-memory#readme",
+  "bugs": {
+    "url": "https://github.com/justhalfbit/dsh-plugin-memory/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "memory",
+    "agent-memory",
+    "cordis",
+    "plugin"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "exports": {
