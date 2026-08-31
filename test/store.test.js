@@ -235,3 +235,27 @@ test('legacy v1 slug directories migrate to v2 names on first access', async () 
   const fresh = await store.load('/tmp/brand-new-project')
   assert.ok(fresh.path.includes(projectDirName('/tmp/brand-new-project')))
 })
+
+test('projectDir resolution is single-flight under concurrent first access', async () => {
+  const root = await mkdtemp(join(scratch, 'dshmem-'))
+  const cwd = '/tmp/race-project'
+  const legacyDir = join(root, 'projects', projectSlug(cwd))
+  await mkdir(legacyDir, { recursive: true })
+  await writeFile(join(legacyDir, 'memories.md'), '# Project Memory\n<!-- dsh-memory v1 -->\n\n## Facts\n- [f-22222] race fact <!-- 2026-08-31 auto -->\n\n## Decisions\n\n## Lessons\n\n## Preferences\n', 'utf8')
+
+  const store = new MemoryStore({ getConfig: () => ({ memoryDir: root }) })
+  // Concurrent first accesses from different call sites share one resolution.
+  const [a, b, listed] = await Promise.all([
+    store.projectDir(cwd),
+    store.load(cwd),
+    store.listTopics(cwd),
+  ])
+  assert.equal(a, join(root, 'projects', projectDirName(cwd)))
+  assert.ok(b.path.startsWith(a))
+  assert.ok(Array.isArray(listed))
+  // Exactly one project directory remains — no legacy/current split-brain.
+  const { readdir } = await import('node:fs/promises')
+  const dirs = await readdir(join(root, 'projects'))
+  assert.deepEqual(dirs.sort(), [projectDirName(cwd)])
+  assert.ok(b.parsed.sections.get('facts').entries.some((entry) => entry.text === 'race fact'))
+})
