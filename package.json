@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-memory",
   "version": "0.5.1",
-  "description": "Cross-session project memory for DeepSeek Harness: silent turn-end distillation into human-editable Markdown under ~/.dsh/memory, pre-step <system-reminder> injection, and memory_save/search/list/forget tools.",
+  "description": "Cross-session project memory for DeepSeek Harness: agent-maintained Markdown memory with progressive-disclosure topic files, digest-deduplicated injection, opt-in silent distillation, six memory tools, and a live settings panel.",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",

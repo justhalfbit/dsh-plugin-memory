@@ -48,6 +48,7 @@ dsh plugin --profile <你的profile名> add github:justhalfbit/dsh-plugin-memory
 
 条目形如 `- [f-1a2b3c4d] 内容 <!-- 2026-09-01 auto -->`——id 由内容哈希派生（天然去重），
 尾注记录日期与来源（`auto` 蒸馏 / `manual` 手动，修剪时 auto 先淘汰）。
+专题上限：每项目 24 个文件、单文件 64K 字符、单次写入 16K 字符。
 
 ### 记忆写入（主机制，对齐 Claude Code）
 

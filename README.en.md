@@ -59,6 +59,7 @@ For local development: clone, `pnpm install`, then
 Entries look like `- [f-1a2b3c4d] text <!-- 2026-09-01 auto -->` — the id derives from a
 content hash (natural dedupe); the trailing comment records date and source (`auto` distilled /
 `manual` saved; auto entries are pruned first).
+Topic limits: 24 files per project, 64K chars per file, 16K chars per write.
 
 ### Memory writing (primary mechanism, Claude Code-aligned)
 
