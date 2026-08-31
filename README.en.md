@@ -30,19 +30,20 @@ Prerequisites: [DSH](https://github.com/deepseek-ai/deepseek-harness) installed 
 
 ```sh
 # Install from GitHub (no build step, so no allowBuilds configuration is needed)
-dsh plugin --profile <your-profile> add github:justhalfbit/dsh-plugin-memory
+dsh plugin --profile web add github:justhalfbit/dsh-plugin-memory
 
-# Restart that profile (e.g. restart `dsh web` for the web profile)
+# Restart `dsh web` to take effect
 ```
 
-`dsh plugin add` writes the dependency into the profile and appends it to
+`web` is the profile name behind `dsh web` (the browser UI); on another profile (e.g. `tui`),
+substitute its name. `dsh plugin add` writes the dependency into the profile and appends it to
 `dsh.profile.bundles` automatically — no manual editing.
 
-Uninstall with `dsh plugin --profile <name> remove dsh-plugin-memory` and restart; memory data
+Uninstall with `dsh plugin --profile web remove dsh-plugin-memory` and restart; memory data
 stays under `~/.dsh/memory` for you to keep or delete.
 
 For local development: clone, `pnpm install`, then
-`dsh plugin --profile <name> add link:/absolute/path/dsh-plugin-memory`.
+`dsh plugin --profile web add link:/absolute/path/dsh-plugin-memory`.
 
 > Compatibility: developed against DSH `0.1.1-rc.x`; upstream APIs may still move during rc.
 

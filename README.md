@@ -23,16 +23,17 @@
 
 ```sh
 # 从 GitHub 安装（本插件零构建步骤，无需 allowBuilds 配置）
-dsh plugin --profile <你的profile名> add github:justhalfbit/dsh-plugin-memory
+dsh plugin --profile web add github:justhalfbit/dsh-plugin-memory
 
-# 重启该 profile 生效（例如 web profile 就是重启 dsh web）
+# 重启 dsh web 生效
 ```
 
+`web` 是 `dsh web`（浏览器界面）对应的 profile 名；用其他 profile（如 `tui`）时把 `web` 换成对应名字即可。
 `dsh plugin add` 会自动把包写入 profile 依赖并追加到 `dsh.profile.bundles`，无需手工编辑。
 
-卸载：`dsh plugin --profile <名> remove dsh-plugin-memory`，重启生效；记忆数据保留在 `~/.dsh/memory`，可手动删除。
+卸载：`dsh plugin --profile web remove dsh-plugin-memory`，重启生效；记忆数据保留在 `~/.dsh/memory`，可手动删除。
 
-本地开发安装：克隆本仓库后 `pnpm install`，再 `dsh plugin --profile <名> add link:/绝对路径/dsh-plugin-memory`。
+本地开发安装：克隆本仓库后 `pnpm install`，再 `dsh plugin --profile web add link:/绝对路径/dsh-plugin-memory`。
 
 > 兼容性：针对 DSH `0.1.1-rc.x` 开发；rc 阶段上游 API 可能变动。
 
