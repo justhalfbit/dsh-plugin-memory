@@ -204,8 +204,9 @@ prompt-level constraints are advisory, as the cross-session delete demonstrated.
   context can re-add what another just removed;
 - Auto-distillation may only add entries and revise/remove the `auto` entries it wrote itself;
   `manual` entries are read-only to it, so correcting one takes a visible `memory_forget`;
-- Failed distillation windows are not retried (deliberate cost control), and the distillation
-  call has no timeout;
+- Failed distillation windows are not retried (deliberate cost control). The plugin sets no
+  timeout of its own on the distillation call, relying on the adapter's stream idle timeout
+  (5 minutes by default on pi-ai), so a stalled run recovers rather than wedging the session;
 - Distillation sees only user/assistant text — not tool calls or their results;
 - Memory files are plugin-owned user data written host-side, outside the agent file sandbox.
 
@@ -213,7 +214,7 @@ prompt-level constraints are advisory, as the cross-session delete demonstrated.
 
 ```sh
 pnpm install
-pnpm test   # node --test test/, 34 unit tests
+pnpm test   # node --test test/
 ```
 
 ## License

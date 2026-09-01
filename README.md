@@ -174,7 +174,8 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
   也没有墓碑——A 删掉的条目，持有旧上下文的 B 可能重新存回来；
 - 自动蒸馏只能新增条目、以及改写/删除**它自己写的** `auto` 条目；`manual` 条目对它只读，
   纠正手动条目必须走可见的 `memory_forget`；
-- 蒸馏失败的窗口不重试（有意的成本控制），且蒸馏调用没有超时；
+- 蒸馏失败的窗口不重试（有意的成本控制）。插件自身不给蒸馏调用设超时，靠 adapter 的
+  流空闲超时兜底（pi-ai 默认 5 分钟），所以卡住的蒸馏会自愈，不会永久停摆；
 - 蒸馏只看得到 user/assistant 文本，看不到工具调用与结果；
 - 记忆文件是插件自有用户数据，host 侧直写，不经 agent 文件沙箱。
 
@@ -182,7 +183,7 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 
 ```sh
 pnpm install
-pnpm test   # node --test test/，34 项单测
+pnpm test   # node --test test/
 ```
 
 ## License
