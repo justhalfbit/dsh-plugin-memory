@@ -2,8 +2,33 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildDistillPrompt, extractWindow, parseDistillOutput, renderExisting, resolveTarget } from '../lib/distill.js'
-import { buildReminderMessage, renderMemoryReminder } from '../lib/inject.js'
+import { PLUGIN_NAME, buildReminderMessage, registerInjection, renderMemoryReminder } from '../lib/inject.js'
 import { applyOps, emptyParsed } from '../lib/store.js'
+
+/**
+ * Drive the real `agent/pre-step` waterfall against a stub store, so the gates
+ * around the splice are covered without touching the filesystem.
+ * @returns the decision the plugin returned for that step.
+ */
+async function runPreStep({ step = 1, claimed = [{ id: 'u1' }], entries = [{ category: 'facts', text: 'a stored fact' }] } = {}) {
+  const parsed = emptyParsed()
+  if (entries.length > 0) {
+    applyOps(parsed, entries.map((entry) => ({ op: 'add', ...entry, source: 'manual' })), { date: '2026-09-02' })
+  }
+  const store = { load: async () => ({ parsed }), listTopics: async () => [] }
+  const handlers = new Map()
+  const ctx = { on: (name, handler) => handlers.set(name, handler), logger: { warn() {} } }
+  registerInjection(ctx, store, () => ({
+    enabled: true, injectBudgetChars: 4000, topicIndexInInject: false, proactivity: 'conservative',
+  }))
+  const agent = { session: { header: { cwd: '/tmp/prestep-project' }, events: [] } }
+  const payload = { agent, messages: claimed, step, signal: { aborted: false } }
+  return handlers.get('agent/pre-step')(payload, async () => ({ kind: 'enter', messages: [...claimed] }))
+}
+
+/** Count plugin-authored reminders in a decision. */
+const reminders = (decision) =>
+  decision.messages.filter((message) => message.source?.plugin === PLUGIN_NAME).length
 
 const userEvent = (text) => ({ type: 'user/message', seq: 0, time: 0, data: { id: 'u', role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } } })
 const pluginEvent = (text) => ({ type: 'user/message', seq: 0, time: 0, data: { id: 'p', role: 'user', content: [{ type: 'text', text }], source: { kind: 'plugin', plugin: 'x' } } })
@@ -111,6 +136,26 @@ test('renderMemoryReminder appends a topic index and renders topics-only reminde
   const both = renderMemoryReminder(parsed, { topics })
   assert.ok(both.includes('## Facts') && both.includes('## Topic files'))
   assert.equal(renderMemoryReminder(emptyParsed(), { topics: [] }), undefined)
+})
+
+test('pre-step injects on a turn\'s first step only', async () => {
+  assert.equal(reminders(await runPreStep({ step: 1 })), 1)
+  // Later steps carry no copy, so N memory_saves in a turn cannot stack up.
+  for (const step of [2, 3, 9]) assert.equal(reminders(await runPreStep({ step })), 0)
+})
+
+test('pre-step leaves an empty first step empty', async () => {
+  // The loop completes a turn that produces no messages without calling the
+  // model. Splicing a reminder in would make that turn real and spend a
+  // request on something no one asked for.
+  const decision = await runPreStep({ step: 1, claimed: [] })
+  assert.equal(reminders(decision), 0)
+  assert.equal(decision.messages.length, 0)
+})
+
+test('pre-step stays out of the way when there is nothing to say', async () => {
+  const decision = await runPreStep({ step: 1, entries: [] })
+  assert.equal(reminders(decision), 0)
 })
 
 test('renderMemoryReminder keeps the WHOLE reminder inside the budget', () => {
