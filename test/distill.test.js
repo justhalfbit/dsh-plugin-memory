@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildDistillPrompt, extractWindow, parseDistillOutput, renderExisting, resolveTarget } from '../lib/distill.js'
-import { PLUGIN_NAME, buildReminderMessage, registerInjection, renderMemoryReminder } from '../lib/inject.js'
+import { PLUGIN_NAME, allocateBudget, buildReminderMessage, registerInjection, renderMemoryReminder } from '../lib/inject.js'
 import { applyOps, emptyParsed } from '../lib/store.js'
 
 /**
@@ -156,6 +156,37 @@ test('pre-step leaves an empty first step empty', async () => {
 test('pre-step stays out of the way when there is nothing to say', async () => {
   const decision = await runPreStep({ step: 1, entries: [] })
   assert.equal(reminders(decision), 0)
+})
+
+test('content that fits inside the budget is never truncated', () => {
+  // The regression: an even split stranded characters in blocks that did not
+  // want them, so four short entries lost one inside a 4000 budget.
+  const parsed = emptyParsed()
+  applyOps(parsed, [
+    { op: 'add', category: 'facts', text: 'f'.repeat(280), source: 'manual' },
+    { op: 'add', category: 'decisions', text: 'd'.repeat(410), source: 'manual' },
+    { op: 'add', category: 'lessons', text: 'l'.repeat(320), source: 'manual' },
+    { op: 'add', category: 'lessons', text: 'm'.repeat(310), source: 'manual' },
+  ], { date: '2026-09-02' })
+  const topics = [{ name: 'review-process', bytes: 3570, date: '2026-09-02', summary: '一份复盘' }]
+  const rendered = renderMemoryReminder(parsed, { budgetChars: 4000, topics })
+  assert.ok(!rendered.includes('omitted'), 'nothing should be dropped when it all fits')
+  assert.ok(!rendered.includes('more topic file'), 'the topic index should not be trimmed either')
+  assert.ok(rendered.length <= 4000)
+  for (const entry of parsed.sections.get('lessons').entries) assert.ok(rendered.includes(entry.id))
+})
+
+test('allocateBudget hands surplus to the blocks that need it', () => {
+  // Small blocks take only what they need; the rest flows to the big one.
+  assert.deepEqual(allocateBudget([100, 100, 700], 900), [100, 100, 700])
+  // Genuinely over budget: the greedy ones share what the small ones released.
+  const grants = allocateBudget([50, 500, 500], 450)
+  assert.equal(grants[0], 50, 'a block under its share gets exactly its need')
+  assert.equal(grants[1] + grants[2], 400, 'the surplus is redistributed, not stranded')
+  assert.ok(grants.reduce((a, b) => a + b, 0) <= 450, 'never over-allocates')
+  // Degenerate inputs stay sane.
+  assert.deepEqual(allocateBudget([], 100), [])
+  assert.deepEqual(allocateBudget([10], 4), [4])
 })
 
 test('renderMemoryReminder keeps the WHOLE reminder inside the budget', () => {
