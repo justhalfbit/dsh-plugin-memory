@@ -213,7 +213,7 @@ prompt-level constraints are advisory, as the cross-session delete demonstrated.
 
 ```sh
 pnpm install
-pnpm test   # node --test test/, 31 unit tests
+pnpm test   # node --test test/, 34 unit tests
 ```
 
 ## License

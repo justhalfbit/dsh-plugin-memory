@@ -182,7 +182,7 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 
 ```sh
 pnpm install
-pnpm test   # node --test test/，31 项单测
+pnpm test   # node --test test/，34 项单测
 ```
 
 ## License
