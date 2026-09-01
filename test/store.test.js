@@ -262,6 +262,19 @@ test('projectDir resolution is single-flight under concurrent first access', asy
   assert.ok(b.parsed.sections.get('facts').entries.some((entry) => entry.text === 'race fact'))
 })
 
+test('a rewrite never silently drops a line it could not parse', () => {
+  // The module promises unparsed lines survive every rewrite. An id line whose
+  // text is empty is not a usable entry, but it must not vanish either.
+  for (const line of ['- [f-22222] ', '- [f-33333] <!-- 2026-01-01 auto -->']) {
+    const out = serializeMemories(parseMemories(`## Facts\n${line}`))
+    assert.ok(out.includes(line.trim()), `lost: ${JSON.stringify(line)}`)
+  }
+  // A real entry alongside one still parses normally.
+  const mixed = parseMemories('## Facts\n- [f-22222] \n- [f-11111] a real fact')
+  assert.equal(mixed.sections.get('facts').entries.length, 1)
+  assert.equal(mixed.sections.get('facts').entries[0].text, 'a real fact')
+})
+
 test('protectManual refuses silent deletes and rewrites of manual entries', () => {
   const parsed = emptyParsed()
   applyOps(parsed, [
