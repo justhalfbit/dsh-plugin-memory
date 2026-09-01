@@ -11,6 +11,8 @@ test.after(async () => {
   await rm(scratch, { recursive: true, force: true })
 })
 import {
+  MAX_TOPIC_CHARS,
+  MAX_TOPIC_FILES,
   MemoryStore,
   applyOps,
   countEntries,
@@ -258,6 +260,39 @@ test('projectDir resolution is single-flight under concurrent first access', asy
   const dirs = await readdir(join(root, 'projects'))
   assert.deepEqual(dirs.sort(), [projectDirName(cwd)])
   assert.ok(b.parsed.sections.get('facts').entries.some((entry) => entry.text === 'race fact'))
+})
+
+test('acquireLock gives up instead of spinning when a stale lock cannot be removed', {
+  // The setup makes the steal fail by removing write permission from the parent
+  // directory, which root ignores — skip rather than fail in a root container.
+  skip: process.getuid?.() === 0 ? 'requires a non-root user' : false,
+}, async () => {
+  const { chmod, utimes } = await import('node:fs/promises')
+  const root = await mkdtemp(join(scratch, 'dshmem-'))
+  const cwd = '/tmp/lock-bail-project'
+  const dir = join(root, 'projects', projectDirName(cwd))
+  await mkdir(dir, { recursive: true })
+  const lock = join(dir, 'memories.md.lock')
+  await mkdir(lock)
+  // Old enough to look stale, inside a directory that forbids the removal:
+  // the steal path fails on every attempt.
+  const stale = new Date(Date.now() - 60000)
+  await utimes(lock, stale, stale)
+  await chmod(dir, 0o555)
+  try {
+    const warnings = []
+    const store = new MemoryStore({ getConfig: () => ({ memoryDir: root }), warn: (message) => warnings.push(message) })
+    const started = Date.now()
+    const unlock = await store.acquireLock(lock)
+    // Bounded: it returns a no-op unlock rather than looping forever.
+    assert.equal(typeof unlock, 'function')
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0], /lock busy, proceeding without/u)
+    // And it backed off between attempts rather than spinning hot.
+    assert.ok(Date.now() - started >= 20 * 50, 'expected bounded retries to back off')
+  } finally {
+    await chmod(dir, 0o755)
+  }
 })
 
 test('applyOps update validates before destroying and reports structured ids', () => {
