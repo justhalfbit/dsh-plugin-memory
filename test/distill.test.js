@@ -113,6 +113,67 @@ test('renderMemoryReminder appends a topic index and renders topics-only reminde
   assert.equal(renderMemoryReminder(emptyParsed(), { topics: [] }), undefined)
 })
 
+test('renderMemoryReminder keeps the WHOLE reminder inside the budget', () => {
+  const parsed = emptyParsed()
+  for (const category of ['facts', 'decisions', 'lessons', 'preferences']) {
+    applyOps(parsed, Array.from({ length: 50 }, (_, index) => ({
+      op: 'add', category, text: `padding entry ${index} ${'y'.repeat(120)}`, source: 'auto',
+    })), { date: '2026-09-01' })
+  }
+  const topics = Array.from({ length: 24 }, (_, index) => ({
+    name: `topic-${index}`, bytes: 2048, date: '2026-09-01', summary: 'z'.repeat(80),
+  }))
+  // The preamble, headings, omission lines and topic index used to sit OUTSIDE
+  // the budget, so a 4000-char budget rendered ~7.8K of reminder.
+  for (const budgetChars of [2500, 4000, 8000, 12000]) {
+    for (const withTopics of [topics, []]) {
+      const rendered = renderMemoryReminder(parsed, { budgetChars, topics: withTopics })
+      assert.ok(rendered.length <= budgetChars, `budget ${budgetChars} produced ${rendered.length} chars`)
+    }
+  }
+  // The topic index is bounded too, and says what it left out.
+  const tight = renderMemoryReminder(parsed, { budgetChars: 2500, topics })
+  assert.ok(tight.includes('more topic file(s)'))
+  assert.ok(tight.includes('omitted; use memory_list'))
+  // Below the schema minimum an irreducible floor binds — the preamble plus one
+  // entry per populated section — but the result stays bounded and usable.
+  const floored = renderMemoryReminder(parsed, { budgetChars: 1, topics })
+  assert.ok(floored.includes('## Facts'))
+  assert.ok(floored.length < 2600, `floored reminder was ${floored.length} chars`)
+
+  // Worst case: max-length entries in every section plus a max-length topic
+  // index. The floor can exceed a near-minimum budget, but by a bounded margin
+  // (it was ~9.5x before the budget covered the preamble and index at all).
+  const fat = emptyParsed()
+  for (const category of ['facts', 'decisions', 'lessons', 'preferences']) {
+    applyOps(fat, [{ op: 'add', category, text: 'x'.repeat(300), source: 'auto' }], { date: '2026-09-01' })
+  }
+  const fatTopics = Array.from({ length: 24 }, () => ({
+    name: 't'.repeat(48), bytes: 999999, date: '2026-09-01', summary: 's'.repeat(80),
+  }))
+  const worst = renderMemoryReminder(fat, { budgetChars: 2500, topics: fatTopics })
+  assert.ok(worst.length < 2500 * 1.35, `worst-case overshoot too large: ${worst.length}`)
+  // And a comfortable budget is honoured exactly, even for that content.
+  assert.ok(renderMemoryReminder(fat, { budgetChars: 3500, topics: fatTopics }).length <= 3500)
+})
+
+test('renderMemoryReminder gives the topic index the whole budget when no entries exist', () => {
+  const topics = Array.from({ length: 6 }, (_, index) => ({
+    name: `topic-${index}`, bytes: 1024, date: '2026-09-01', summary: 'summary text',
+  }))
+  const rendered = renderMemoryReminder(emptyParsed(), { budgetChars: 4000, topics })
+  assert.ok(rendered.length <= 4000)
+  for (const topic of topics) assert.ok(rendered.includes(topic.name), `${topic.name} should fit`)
+})
+
+test('renderMemoryReminder requires conversation evidence before a delete', () => {
+  const parsed = emptyParsed()
+  applyOps(parsed, [{ op: 'add', category: 'facts', text: 'some fact', source: 'auto' }], { date: '2026-09-01' })
+  const rendered = renderMemoryReminder(parsed, {})
+  assert.ok(rendered.includes('concrete evidence'))
+  assert.ok(rendered.includes('Other sessions in this project share these files'))
+})
+
 test('renderMemoryReminder proactivity levels switch the maintenance rules', () => {
   const parsed = emptyParsed()
   applyOps(parsed, [{ op: 'add', category: 'facts', text: 'some fact', source: 'auto' }], { date: '2026-09-01' })
