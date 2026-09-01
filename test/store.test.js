@@ -262,6 +262,54 @@ test('projectDir resolution is single-flight under concurrent first access', asy
   assert.ok(b.parsed.sections.get('facts').entries.some((entry) => entry.text === 'race fact'))
 })
 
+test('protectManual refuses silent deletes and rewrites of manual entries', () => {
+  const parsed = emptyParsed()
+  applyOps(parsed, [
+    { op: 'add', category: 'facts', text: 'written through a visible tool call', source: 'manual' },
+    { op: 'add', category: 'facts', text: 'written by an earlier distillation', source: 'auto' },
+  ], { date: '2026-09-02' })
+  const manualId = parsed.sections.get('facts').entries[0].id
+  const autoId = parsed.sections.get('facts').entries[1].id
+
+  const forget = applyOps(parsed, [{ op: 'forget', id: manualId }], { protectManual: true })
+  assert.equal(forget.changed, false)
+  assert.match(forget.skipped[0], /protected manual entry/u)
+  assert.equal(findEntry(parsed, manualId).entry.text, 'written through a visible tool call')
+
+  // An update is destructive too (remove + re-add), so it is refused as well —
+  // and dropped outright rather than degraded into a contradictory extra entry.
+  const update = applyOps(parsed, [{ op: 'update', id: manualId, category: 'facts', text: 'a silent rewrite' }], { protectManual: true })
+  assert.equal(update.changed, false)
+  assert.match(update.skipped[0], /protected manual entry/u)
+  assert.equal(findEntry(parsed, manualId).entry.text, 'written through a visible tool call')
+  assert.equal(parsed.sections.get('facts').entries.length, 2, 'no contradictory pair left behind')
+
+  // The pass still curates its OWN auto entries, and may still add.
+  const ownWork = applyOps(parsed, [
+    { op: 'update', id: autoId, category: 'facts', text: 'a corrected auto entry', source: 'auto' },
+    { op: 'add', category: 'lessons', text: 'a brand new lesson', source: 'auto' },
+  ], { protectManual: true })
+  assert.equal(ownWork.changed, true)
+  assert.equal(findEntry(parsed, autoId), undefined)
+  assert.ok(parsed.sections.get('facts').entries.some((entry) => entry.text === 'a corrected auto entry'))
+  assert.equal(parsed.sections.get('lessons').entries.length, 1)
+
+  // The visible tool path is unrestricted: it defaults to protectManual off.
+  const visible = applyOps(parsed, [{ op: 'forget', id: manualId }], {})
+  assert.equal(visible.changed, true)
+  assert.equal(findEntry(parsed, manualId), undefined)
+})
+
+test('protectManual also shields hand-written entries that carry no source meta', () => {
+  // parseMemories defaults a bare entry line to `manual`, so a user's own
+  // hand-edited note is protected without needing any annotation.
+  const parsed = parseMemories(['## Facts', '- [f-11111] hand written by the user'].join('\n'))
+  assert.equal(parsed.sections.get('facts').entries[0].source, 'manual')
+  const result = applyOps(parsed, [{ op: 'forget', id: 'f-11111' }], { protectManual: true })
+  assert.equal(result.changed, false)
+  assert.equal(findEntry(parsed, 'f-11111').entry.text, 'hand written by the user')
+})
+
 test('acquireLock gives up instead of spinning when a stale lock cannot be removed', {
   // The setup makes the steal fail by removing write permission from the parent
   // directory, which root ignores — skip rather than fail in a root container.

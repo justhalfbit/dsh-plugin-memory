@@ -52,11 +52,17 @@ test('resolveTarget prefers configured, then request header, then agent options'
   assert.equal(resolveTarget({ distillProvider: '', distillModel: '' }, bare), undefined)
 })
 
-test('prompt carries existing memory and transcript', () => {
+test('prompt carries existing memory with provenance, plus the transcript', () => {
   const parsed = emptyParsed()
-  applyOps(parsed, [{ op: 'add', category: 'facts', text: 'uses vite', source: 'auto' }], { date: '2026-08-31' })
+  applyOps(parsed, [
+    { op: 'add', category: 'facts', text: 'uses vite', source: 'auto' },
+    { op: 'add', category: 'decisions', text: 'chose markdown', source: 'manual' },
+  ], { date: '2026-08-31' })
   const prompt = buildDistillPrompt(renderExisting(parsed), 'USER: hi')
-  assert.ok(prompt.includes('(facts) uses vite'))
+  // The source rides each line so the model can tell what it may revise.
+  assert.ok(prompt.includes('(facts, auto) uses vite'))
+  assert.ok(prompt.includes('(decisions, manual) chose markdown'))
+  assert.ok(prompt.includes('only "update" or "forget" entries whose source is "auto"'))
   assert.ok(prompt.includes('USER: hi'))
   assert.ok(prompt.includes('"items"'))
 })
