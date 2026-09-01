@@ -84,14 +84,18 @@ comment records date and source (`auto` distilled / `manual` saved; auto entries
 ## Preferences
 ```
 
-Topic limits: 24 files per project, 64K chars per file, 16K chars per write.
+Topic limits: 24 files per project, 64K chars per file. Reads and single writes share that same
+64K bound, so any topic the store accepted can always be read back in full and rewritten whole
+with one `replace`; free a slot at the file cap with `memory_delete_topic`.
 
 ### Memory writing (primary mechanism, Claude Code-aligned)
 
 The injected prompt (default conservative wording) instructs the conversation agent to call `memory_save` when it learns
 something durable and non-obvious: a correction from the user, a decision with its reason, a
-hard-won lesson, a stable project fact — and to skip it when in doubt; to `memory_forget`
-stale entries; and to organize substantial reusable knowledge into topic files with
+hard-won lesson, a stable project fact — and to skip it when in doubt; to `memory_forget` an
+entry only when THIS conversation supplies concrete evidence that it is wrong or obsolete
+(every session in the project shares these files, so "it reads oddly" is not grounds to delete
+another session's knowledge); and to organize substantial reusable knowledge into topic files with
 `memory_write_topic` at natural stopping points. The `proactivity` setting switches only the
 wording; the mechanism and guardrails are identical at every level.
 
@@ -100,10 +104,17 @@ wording; the mechanism and guardrails are identical at every level.
 An `agent/pre-step` waterfall splices the memory into the step as a `<system-reminder>`:
 main-file entries in full (4000-char budget by default, per-section balanced truncation keeping
 the newest), topic files as one line each (name + size + date + first-line summary), bodies
-loaded on demand via `memory_read`. Deduplicated by the SHA-1 of the rendered body — an
+loaded on demand via `memory_read`. The budget governs the WHOLE reminder: the fixed instruction
+preamble is paid first and the entries plus topic index share the remainder, rather than each
+claiming a slice of its own. Deduplicated by the SHA-1 of the rendered body — an
 unchanged file injects once per session (KV-cache friendly); the digest only advances once the
 injected message durably lands in the log, so a failed step self-heals with a re-injection;
 resumed sessions recover the digest by scanning their log.
+
+Injection happens only on a turn's FIRST step. The conversation agent maintains this memory
+itself, so re-rendering mid-turn would hand it another full reminder after every `memory_save`
+(≈ O(N²) context for N saves) just to restate what the writer had already written. Changes made
+during a turn ride the next turn's first step.
 
 ### Silent distillation (opt-in, off by default)
 
@@ -124,6 +135,7 @@ session's latest routed request → the agent's own options.
 | `memory_forget` | Delete one wrong/stale entry by id |
 | `memory_read` | Read one topic file in full, on demand |
 | `memory_write_topic` | Create/append/rewrite a topic file (append / replace) |
+| `memory_delete_topic` | Delete a whole topic file (frees a slot at the per-project cap) |
 
 ## Settings
 
@@ -136,7 +148,7 @@ of `~/.dsh/settings.yaml`. Everything applies live.
 | `proactivity` | `'conservative'` | How eagerly the agent saves: `conservative` / `balanced` / `eager` |
 | `autoDistill` | `false` | Opt-in background distillation after completed turns |
 | `memoryDir` | `''` | Memory root; empty = `<DSH home>/memory` |
-| `injectBudgetChars` | `4000` | Injection budget (chars), per-section balanced truncation |
+| `injectBudgetChars` | `4000` | Budget (chars) for the whole reminder, ~1K fixed preamble included; per-section balanced truncation |
 | `distillMinChars` | `500` | Minimum new chars before a distillation (smaller turns accumulate) |
 | `cooldownTurns` | `1` | Minimum turns between distillations in one session |
 | `distillProvider` / `distillModel` | `''` | Distillation model; empty follows the conversation |
@@ -173,18 +185,35 @@ close-tag variants in injected content are escaped case-insensitively; the disti
 forbids storing secrets/credentials/personal data; subagent sessions are neither injected into
 nor distilled.
 
+**The silent actor holds fewer powers**: background distillation produces no tool card for the
+user to object to, and reads only a text-only window (no tool calls or results). So it may add
+entries and curate its own `auto` ones, but it may **not delete or rewrite a `manual` entry
+written through a visible tool call** (`update` removes then re-adds, so it is destructive too
+and is refused alike; a blocked op is dropped rather than degraded into an `add` that would
+leave a contradictory pair). This is enforced in `applyOps`, not requested in the prompt —
+prompt-level constraints are advisory, as the cross-session delete demonstrated.
+
 ## Known limitations
 
 - Cross-process concurrent writes to one project are last-write-wins (strictly serialized
   within a process);
-- Failed distillation windows are not retried (deliberate cost control);
+- Memory is shared per project, not isolated per session: any session in a project can rewrite
+  or delete entries another session recorded. The injected prompt now requires concrete
+  evidence from the current conversation before a delete, but that is a prompt-level
+  constraint, not an enforced one — and there are no tombstones, so a session holding stale
+  context can re-add what another just removed;
+- Auto-distillation may only add entries and revise/remove the `auto` entries it wrote itself;
+  `manual` entries are read-only to it, so correcting one takes a visible `memory_forget`;
+- Failed distillation windows are not retried (deliberate cost control), and the distillation
+  call has no timeout;
+- Distillation sees only user/assistant text — not tool calls or their results;
 - Memory files are plugin-owned user data written host-side, outside the agent file sandbox.
 
 ## Development
 
 ```sh
 pnpm install
-pnpm test   # node --test test/, 23 unit tests
+pnpm test   # node --test test/, 31 unit tests
 ```
 
 ## License
