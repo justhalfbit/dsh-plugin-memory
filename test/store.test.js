@@ -295,6 +295,42 @@ test('acquireLock gives up instead of spinning when a stale lock cannot be remov
   }
 })
 
+test('topic read and single-write bounds both equal the file cap', async () => {
+  const root = await mkdtemp(join(scratch, 'dshmem-'))
+  const store = new MemoryStore({ getConfig: () => ({ memoryDir: root }) })
+  const cwd = '/tmp/topic-bounds-project'
+  // Fill a topic close to the file cap, then confirm a full read round-trips:
+  // a read bound below the write bound would hand back a truncated body that a
+  // later "replace" would save over the complete file.
+  const body = `# big\n${'A'.repeat(MAX_TOPIC_CHARS - 200)}`
+  await store.writeTopic(cwd, 'big', body, 'replace')
+  const read = await store.readTopic(cwd, 'big')
+  assert.ok(!read.text.includes('truncated'), 'a legal topic must never read back truncated')
+  assert.equal(read.text.trim(), body)
+  // The whole body can therefore be rewritten in one replace.
+  const rewritten = await store.writeTopic(cwd, 'big', read.text, 'replace')
+  assert.ok(rewritten.bytes > 0)
+})
+
+test('deleteTopic removes a topic and frees a slot at the per-project cap', async () => {
+  const root = await mkdtemp(join(scratch, 'dshmem-'))
+  const store = new MemoryStore({ getConfig: () => ({ memoryDir: root }) })
+  const cwd = '/tmp/topic-delete-project'
+  for (let index = 0; index < MAX_TOPIC_FILES; index += 1) {
+    await store.writeTopic(cwd, `topic-${index}`, 'x', 'replace')
+  }
+  await assert.rejects(store.writeTopic(cwd, 'one-too-many', 'x', 'replace'), /topic file limit reached/u)
+  const removed = await store.deleteTopic(cwd, 'topic-0')
+  assert.equal(removed.deleted, true)
+  assert.equal(await store.readTopic(cwd, 'topic-0'), undefined)
+  assert.equal((await store.listTopics(cwd)).length, MAX_TOPIC_FILES - 1)
+  // The freed slot is usable, so the cap is no longer a dead end.
+  const created = await store.writeTopic(cwd, 'one-too-many', 'x', 'replace')
+  assert.equal(created.created, true)
+  // Deleting an absent topic is a reported no-op, not an error.
+  assert.deepEqual((await store.deleteTopic(cwd, 'never-existed')).deleted, false)
+})
+
 test('applyOps update validates before destroying and reports structured ids', () => {
   const parsed = emptyParsed()
   const first = applyOps(parsed, [{ op: 'add', category: 'facts', text: 'keep me', source: 'auto' }], { date: '2026-09-01' })

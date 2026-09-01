@@ -1,7 +1,7 @@
 # dsh-plugin-memory bundle patch: one host-plane row.
 #
 # The row's node half (lib/index.js) owns the cross-session memory store under
-# ~/.dsh/memory, registers the `memory` settings namespace, the six global
+# ~/.dsh/memory, registers the `memory` settings namespace, the seven global
 # memory tools, the `agent/pre-step` injection, and the opt-in `turn/end`
 # distillation (off by default; the conversation agent maintains memory itself).
 # Host-plane (not an agent preset row) because a settings namespace registers
