@@ -89,7 +89,7 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 ### 注入
 
 `agent/pre-step` waterfall 把记忆以 `<system-reminder>` 拼入步骤消息：主文件条目全量
-（默认 4000 字符预算，按节均衡截断保最新），专题文件每个一行索引（名称 + 大小 + 日期 + 首行摘要），
+（默认 16000 字符预算，按需分摊、超出才截断保最新），专题文件每个一行索引（名称 + 大小 + 日期 + 首行摘要），
 正文由模型在相关时调 `memory_read` 按需加载。预算管的是**整个提示**——固定的指令开头先扣除，
 剩下的额度由条目与专题索引分摊，不会各自另算。按渲染体 SHA-1 防重——文件不变则整个会话只注入一次
 （KV cache 友好）；digest 仅在注入消息真正落盘后推进，步骤失败自动自愈重注入；
@@ -128,9 +128,9 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 | `proactivity` | `'conservative'` | 记忆积极度：`conservative` / `balanced` / `eager` |
 | `autoDistill` | `false` | opt-in：额外开启每轮完成后的后台静默蒸馏 |
 | `memoryDir` | `''` | 记忆根目录，空 = `<DSH home>/memory` |
-| `injectBudgetChars` | `4000` | 整个注入提示的字符预算（含 ~1K 固定指令开头），超出按节均衡截断（保最新） |
-| `distillMinChars` | `500` | 触发蒸馏的最小新增字符（不足则累积到下轮） |
-| `cooldownTurns` | `1` | 同会话两次蒸馏的最小间隔轮数 |
+| `injectBudgetChars` | `16000` | 整个注入提示的字符预算（含 ~1K 固定指令开头）；约占 1M token 窗口的 0.4% |
+| `distillMinChars` | `2500` | 触发蒸馏的最小新增字符（不足则累积到下轮） |
+| `cooldownTurns` | `3` | 同会话两次蒸馏的最小间隔轮数（与上一项相乘决定蒸馏频率） |
 | `distillProvider` / `distillModel` | `''` | 蒸馏模型；留空跟随当前对话 |
 | `maxEntriesPerCategory` | `50` | 每类条目上限，超出先淘汰最旧的 auto 条目 |
 | `topicIndexInInject` | `true` | 注入摘要末尾是否附专题索引（正文始终按需加载） |
@@ -147,7 +147,7 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 | 环节 | Claude Code | 本插件 |
 |---|---|---|
 | 写入者 | 主对话 agent 自己（可见工具调用） | ✅ 相同（`proactivity` 三档可调） |
-| 加载 | MEMORY.md 前 200 行 | 主文件预算内全量（默认 4000 字符） |
+| 加载 | MEMORY.md 前 200 行 | 主文件预算内全量（默认 16000 字符） |
 | 专题文件 | 不自动加载，按需 Read | ✅ 相同（`memory_read`） |
 | 索引 | agent 手工维护于 MEMORY.md，会失同步 | **注入时扫目录动态生成，永不失同步** |
 | 结构 | 自由格式，无界增长 | **四类条目 + 内容哈希去重 + 上限修剪** |

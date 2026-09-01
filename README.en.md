@@ -102,7 +102,7 @@ wording; the mechanism and guardrails are identical at every level.
 ### Injection
 
 An `agent/pre-step` waterfall splices the memory into the step as a `<system-reminder>`:
-main-file entries in full (4000-char budget by default, per-section balanced truncation keeping
+main-file entries in full (16000-char budget by default, shared out by need and truncated only
 the newest), topic files as one line each (name + size + date + first-line summary), bodies
 loaded on demand via `memory_read`. The budget governs the WHOLE reminder: the fixed instruction
 preamble is paid first and the entries plus topic index share the remainder, rather than each
@@ -148,9 +148,9 @@ of `~/.dsh/settings.yaml`. Everything applies live.
 | `proactivity` | `'conservative'` | How eagerly the agent saves: `conservative` / `balanced` / `eager` |
 | `autoDistill` | `false` | Opt-in background distillation after completed turns |
 | `memoryDir` | `''` | Memory root; empty = `<DSH home>/memory` |
-| `injectBudgetChars` | `4000` | Budget (chars) for the whole reminder, ~1K fixed preamble included; per-section balanced truncation |
-| `distillMinChars` | `500` | Minimum new chars before a distillation (smaller turns accumulate) |
-| `cooldownTurns` | `1` | Minimum turns between distillations in one session |
+| `injectBudgetChars` | `16000` | Budget (chars) for the whole reminder, ~1K fixed preamble included; ~0.4% of a 1M-token window |
+| `distillMinChars` | `2500` | Minimum new chars before a distillation (smaller turns accumulate) |
+| `cooldownTurns` | `3` | Minimum turns between distillations in one session (multiplies with the threshold above) |
 | `distillProvider` / `distillModel` | `''` | Distillation model; empty follows the conversation |
 | `maxEntriesPerCategory` | `50` | Per-category cap; oldest auto entries pruned first |
 | `topicIndexInInject` | `true` | Append the topic index to the injected reminder |
@@ -168,7 +168,7 @@ scopes everything per project — one instance serves every session with nothing
 | Aspect | Claude Code | This plugin |
 |---|---|---|
 | Writer | the conversation agent itself (visible tool calls) | ✅ same (`proactivity` adjustable) |
-| Loading | first 200 lines of MEMORY.md | main file within a budget (4000 chars default) |
+| Loading | first 200 lines of MEMORY.md | main file within a budget (16000 chars default) |
 | Topic files | not auto-loaded; Read on demand | ✅ same (`memory_read`) |
 | Index | hand-maintained in MEMORY.md; drifts stale | **generated from the directory at injection time; never stale** |
 | Structure | free-form, unbounded growth | **four categories + content-hash dedupe + capped pruning** |
