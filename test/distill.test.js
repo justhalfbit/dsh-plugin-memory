@@ -176,6 +176,25 @@ test('content that fits inside the budget is never truncated', () => {
   for (const entry of parsed.sections.get('lessons').entries) assert.ok(rendered.includes(entry.id))
 })
 
+test('a budget exactly equal to the need does not truncate', () => {
+  // Sizing a block as one newline per line overstates it by one, so at the
+  // boundary the allocator believed the content did not fit when it did.
+  const parsed = emptyParsed()
+  for (const category of ['facts', 'decisions', 'lessons', 'preferences']) {
+    applyOps(parsed, [
+      { op: 'add', category, text: `${category} one `.repeat(9), source: 'manual' },
+      { op: 'add', category, text: `${category} two `.repeat(7), source: 'manual' },
+    ], { date: '2026-09-02' })
+  }
+  const topics = [{ name: 'a-topic', bytes: 2048, date: '2026-09-02', summary: 'summary' }]
+  const exact = renderMemoryReminder(parsed, { budgetChars: 999999, topics }).length
+  for (const budgetChars of [exact, exact + 1, exact + 8]) {
+    const rendered = renderMemoryReminder(parsed, { budgetChars, topics })
+    assert.ok(!/omitted|more topic file/u.test(rendered), `truncated at budget ${budgetChars} needing ${exact}`)
+    assert.ok(rendered.length <= budgetChars)
+  }
+})
+
 test('allocateBudget hands surplus to the blocks that need it', () => {
   // Small blocks take only what they need; the rest flows to the big one.
   assert.deepEqual(allocateBudget([100, 100, 700], 900), [100, 100, 700])
