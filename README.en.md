@@ -92,7 +92,9 @@ with one `replace`; free a slot at the file cap with `memory_delete_topic`.
 
 The injected prompt (default conservative wording) instructs the conversation agent to call `memory_save` when it learns
 something durable and non-obvious: a correction from the user, a decision with its reason, a
-hard-won lesson, a stable project fact — and to skip it when in doubt; to `memory_forget` an
+hard-won lesson, a stated user preference, a stable project fact — and to skip it when in doubt
+(the conservative level adds that most turns record nothing, and that near-duplicates from one
+turn should be merged into a single entry); to `memory_forget` an
 entry only when THIS conversation supplies concrete evidence that it is wrong or obsolete
 (every session in the project shares these files, so "it reads oddly" is not grounds to delete
 another session's knowledge); and to organize substantial reusable knowledge into topic files with

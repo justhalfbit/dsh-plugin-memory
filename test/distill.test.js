@@ -264,7 +264,13 @@ test('renderMemoryReminder keeps the WHOLE reminder inside the budget', () => {
   }))
   // The preamble, headings, omission lines and topic index used to sit OUTSIDE
   // the budget, so a 4000-char budget rendered ~7.8K of reminder.
-  for (const budgetChars of [2500, 4000, 8000, 12000]) {
+  //
+  // The tightest probe sits just above the IRREDUCIBLE FLOOR — the preamble
+  // plus one kept entry per populated section, which no budget can compress.
+  // Grow the preamble and the floor rises with it, so raise this probe rather
+  // than assuming the allocator broke: adding the conservative cadence line
+  // moved the floor from 2432 to 2540.
+  for (const budgetChars of [2600, 4000, 8000, 12000]) {
     for (const withTopics of [topics, []]) {
       const rendered = renderMemoryReminder(parsed, { budgetChars, topics: withTopics })
       assert.ok(rendered.length <= budgetChars, `budget ${budgetChars} produced ${rendered.length} chars`)

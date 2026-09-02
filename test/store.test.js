@@ -19,6 +19,7 @@ import {
   emptyParsed,
   entryId,
   findEntry,
+  localDay,
   parseMemories,
   projectDirName,
   projectSlug,
@@ -33,6 +34,20 @@ test('entryId is stable across whitespace/case', () => {
   const b = entryId('facts', '  vite 构建入口在   APPS/WEB ')
   assert.equal(a, b)
   assert.match(a, /^f-[0-9a-f]{8}$/u)
+})
+
+test('localDay stamps the LOCAL calendar day, and a dateless add uses it', () => {
+  // Both dates are built from LOCAL components, so east of Greenwich the old
+  // toISOString() would report the PREVIOUS day for them — the off-by-one this
+  // replaced (an entry saved 01:00 in UTC+8 was dated a day early). Asserting
+  // fixed strings keeps the test honest in every zone: it discriminates
+  // wherever the offset is non-zero and never fails where it is zero.
+  assert.equal(localDay(new Date(2026, 0, 1, 0, 30)), '2026-01-01')
+  assert.equal(localDay(new Date(2026, 2, 5, 12, 0)), '2026-03-05', 'month and day are zero-padded')
+  // The stamp an entry actually receives when the caller passes no date.
+  const parsed = emptyParsed()
+  applyOps(parsed, [{ op: 'add', category: 'facts', text: 'dated by default', source: 'manual' }])
+  assert.ok(serializeMemories(parsed).includes(`<!-- ${localDay()} manual -->`))
 })
 
 test('projectSlug is readable and collision-safe', () => {
