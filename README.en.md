@@ -111,6 +111,13 @@ unchanged file injects once per session (KV-cache friendly); the digest only adv
 injected message durably lands in the log, so a failed step self-heals with a re-injection;
 resumed sessions recover the digest by scanning their log.
 
+**An empty memory is injected too** (~0.9–1K chars, with no entry block at all). The rules that
+tell a model to record anything live only inside this reminder, and auto-distillation is off by
+default, so "inject nothing when empty" was self-sealing: no rules → no `memory_save` → still
+empty → still nothing injected. The empty-memory reminder carries just the save and topic rules
+for the configured proactivity level, plus an explicit instruction not to manufacture entries to
+fill it; the first saved entry switches back to the full reminder for good.
+
 Injection happens only on a turn's FIRST step. The conversation agent maintains this memory
 itself, so re-rendering mid-turn would hand it another full reminder after every `memory_save`
 (≈ O(N²) context for N saves) just to restate what the writer had already written. Changes made

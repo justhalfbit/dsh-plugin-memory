@@ -104,7 +104,14 @@ test('renderMemoryReminder renders sections within budget and escapes the close 
   assert.ok(rendered.includes('## Facts'))
   assert.ok(rendered.includes('## Preferences'))
   assert.ok(rendered.includes('<\\/system-reminder> tag'))
-  assert.equal(renderMemoryReminder(emptyParsed(), {}), undefined)
+  // An empty memory renders the bootstrap reminder instead of nothing: rules,
+  // but no entry or topic block to read.
+  const bootstrap = renderMemoryReminder(emptyParsed(), {})
+  assert.ok(bootstrap.startsWith('<system-reminder>'))
+  assert.ok(bootstrap.endsWith('</system-reminder>'))
+  assert.ok(bootstrap.includes('memory_save'))
+  assert.ok(!bootstrap.includes('##'), 'bootstrap must render no blocks')
+  assert.ok(!/\n\n\n/u.test(bootstrap), 'no stray blank line where the blocks would go')
 
   // budget truncation keeps the NEWEST entries and adds an omission marker
   const big = emptyParsed()
@@ -135,7 +142,11 @@ test('renderMemoryReminder appends a topic index and renders topics-only reminde
   applyOps(parsed, [{ op: 'add', category: 'facts', text: 'some fact', source: 'auto' }], { date: '2026-08-31' })
   const both = renderMemoryReminder(parsed, { topics })
   assert.ok(both.includes('## Facts') && both.includes('## Topic files'))
-  assert.equal(renderMemoryReminder(emptyParsed(), { topics: [] }), undefined)
+  // No entries and no topics: rules only, and no topic heading to mislead.
+  const neither = renderMemoryReminder(emptyParsed(), { topics: [] })
+  assert.ok(neither.includes('has no entries yet'))
+  assert.ok(!neither.includes('## Topic files'))
+  assert.ok(!neither.includes('memory_read'), 'nothing to read, so do not advertise it')
 })
 
 test('pre-step injects on a turn\'s first step only', async () => {
@@ -153,9 +164,42 @@ test('pre-step leaves an empty first step empty', async () => {
   assert.equal(decision.messages.length, 0)
 })
 
-test('pre-step stays out of the way when there is nothing to say', async () => {
+test('pre-step bootstraps an empty memory rather than staying silent', async () => {
+  // This inverts an earlier deliberate invariant ("stay out of the way when
+  // there is nothing to say"). Staying silent was self-sealing: the save rules
+  // ship only inside this reminder, so a project whose memory starts empty
+  // never learned to write its first entry and stayed empty forever.
   const decision = await runPreStep({ step: 1, entries: [] })
-  assert.equal(reminders(decision), 0)
+  assert.equal(reminders(decision), 1)
+  const text = decision.messages.find((message) => message.source?.plugin === PLUGIN_NAME).content[0].text
+  assert.ok(text.includes('has no entries yet'))
+  assert.ok(text.includes('memory_save'))
+  assert.ok(!text.includes('##'), 'an empty memory must not render an empty block')
+})
+
+test('the bootstrap reminder keeps the caller\'s bar and hands off on the first entry', () => {
+  // Bootstrapping must not quietly promote a conservative project to eager.
+  const conservative = renderMemoryReminder(emptyParsed(), { proactivity: 'conservative' })
+  const eager = renderMemoryReminder(emptyParsed(), { proactivity: 'eager' })
+  assert.notEqual(conservative, eager)
+  assert.ok(conservative.includes('NEVER save'))
+  assert.ok(eager.includes('Err on the side of'))
+  // ...and it tells the model not to manufacture entries just to fill the file.
+  assert.ok(conservative.includes('Do not save anything merely to fill'))
+  // An unrecognized level falls back instead of throwing.
+  assert.ok(renderMemoryReminder(emptyParsed(), { proactivity: 'bogus' }).includes('memory_save'))
+  // A fixed cost, never budget-negotiated: a tiny budget trimming it away
+  // would restore the very deadlock this reminder exists to break.
+  assert.ok(renderMemoryReminder(emptyParsed(), { budgetChars: 10 }).includes('memory_save'))
+
+  // One entry is enough to leave bootstrap mode for good.
+  const parsed = emptyParsed()
+  applyOps(parsed, [{ op: 'add', category: 'facts', text: 'the first fact', source: 'manual' }], { date: '2026-09-03' })
+  const populated = renderMemoryReminder(parsed, {})
+  assert.ok(populated.includes('## Facts'))
+  assert.ok(populated.includes('the first fact'))
+  assert.ok(!populated.includes('has no entries yet'), 'bootstrap text must not leak into a populated reminder')
+  assert.ok(!populated.includes('merely to fill'))
 })
 
 test('content that fits inside the budget is never truncated', () => {
