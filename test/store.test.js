@@ -93,6 +93,12 @@ test('applyOps add dedupes by content and honours per-category cap', () => {
   // oldest auto entry pruned first; the manual entry survives
   assert.ok(entries.some((entry) => entry.text === 'entry two'))
   assert.ok(!entries.some((entry) => entry.text === 'the build uses vite'))
+  // The cap has to say what it destroyed, text included — the id alone names an
+  // entry that is already gone, so nothing could look it up afterwards.
+  assert.equal(cap.pruned.length, 1)
+  assert.equal(cap.pruned[0].text, 'the build uses vite')
+  assert.ok(cap.pruned[0].id.startsWith('f-'))
+  assert.deepEqual(first.pruned, [], 'a call that prunes nothing reports nothing')
 })
 
 test('applyOps update replaces by id and forget removes', () => {
