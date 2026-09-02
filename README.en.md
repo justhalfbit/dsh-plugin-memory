@@ -159,7 +159,7 @@ of `~/.dsh/settings.yaml`. Everything applies live.
 | `distillMinChars` | `2500` | Minimum new chars before a distillation (smaller turns accumulate) |
 | `cooldownTurns` | `3` | Minimum turns between distillations in one session (multiplies with the threshold above) |
 | `distillProvider` / `distillModel` | `''` | Distillation model; empty follows the conversation |
-| `maxEntriesPerCategory` | `50` | Per-category cap; oldest auto entries pruned first. An eviction is reported in the `memory_save` result **with the deleted entry's text**, never silently |
+| `maxEntriesPerCategory` | `50` | Per-category cap; oldest auto entries pruned first. An eviction is reported in the `memory_save` / `memory_forget` result **with the deleted entry's text**, never silently (lowering this cap puts every category over it at once, so the next save or forget prunes the excess and reports all of it) |
 | `topicIndexInInject` | `true` | Append the topic index to the injected reminder |
 
 ## Design

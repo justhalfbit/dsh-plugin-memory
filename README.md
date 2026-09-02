@@ -137,7 +137,7 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 | `distillMinChars` | `2500` | 触发蒸馏的最小新增字符（不足则累积到下轮） |
 | `cooldownTurns` | `3` | 同会话两次蒸馏的最小间隔轮数（与上一项相乘决定蒸馏频率） |
 | `distillProvider` / `distillModel` | `''` | 蒸馏模型；留空跟随当前对话 |
-| `maxEntriesPerCategory` | `50` | 每类条目上限，超出先淘汰最旧的 auto 条目；淘汰会连同**被删条目的正文**一起在 `memory_save` 的结果里报出，不静默 |
+| `maxEntriesPerCategory` | `50` | 每类条目上限，超出先淘汰最旧的 auto 条目；淘汰会连同**被删条目的正文**一起在 `memory_save` / `memory_forget` 的结果里报出，不静默（调低本上限会让各类立刻超限，随后第一次写入或删除就会清理超额部分，并全部报出） |
 | `topicIndexInInject` | `true` | 注入摘要末尾是否附专题索引（正文始终按需加载） |
 
 ## 设计
