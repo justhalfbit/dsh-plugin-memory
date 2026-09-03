@@ -45,7 +45,7 @@ stays under `~/.dsh/memory` for you to keep or delete.
 For local development: clone, `pnpm install`, then
 `dsh plugin --profile web add link:/absolute/path/dsh-plugin-memory`.
 
-> Compatibility: developed against DSH `0.1.1-rc.x`; upstream APIs may still move during rc.
+> Compatibility: supports DSH `0.1.1-rc.x` (`latest`) and `0.1.2-rc.1` (`next`, verified end-to-end); upstream APIs may still move during rc — the client module-table drift is handled by an in-plugin fallback chain.
 
 ### Interface support
 
