@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-memory",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Cross-session project memory for DeepSeek Harness: agent-maintained Markdown memory with progressive-disclosure topic files, digest-deduplicated injection, opt-in silent distillation, seven memory tools, and a live settings panel.",
   "license": "MIT",
   "repository": {
