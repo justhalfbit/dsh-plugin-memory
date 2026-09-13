@@ -108,10 +108,13 @@ main-file entries in full (64000-char budget by default, shared out by need and 
 the newest), topic files as one line each (name + size + date + first-line summary), bodies
 loaded on demand via `memory_read`. The budget governs the WHOLE reminder: the fixed instruction
 preamble is paid first and the entries plus topic index share the remainder, rather than each
-claiming a slice of its own. Deduplicated by the SHA-1 of the rendered body — an
-unchanged file injects once per session (KV-cache friendly); the digest only advances once the
-injected message durably lands in the log, so a failed step self-heals with a re-injection;
-resumed sessions recover the digest by scanning their log.
+claiming a slice of its own. Deduplicated by the SHA-1 of the rendered body against the newest
+reminder of ours the MODEL CAN STILL SEE (the last one on `session.surface.nodes`) — an unchanged
+file injects once per session (KV-cache friendly). The visible surface is the only ground truth,
+with no in-process bookkeeping, so restart, resume, and fork just work; a reminder from a step that
+failed before logging never reached the surface and is re-injected; and once a compaction shadows
+the reminder (its summary does not carry the text), the next turn re-injects one copy, so a long
+session never silently loses its memory.
 
 **An empty memory is injected too** (~0.9–1K chars, with no entry block at all). The rules that
 tell a model to record anything live only inside this reminder, and auto-distillation is off by
@@ -186,7 +189,7 @@ scopes everything per project — one instance serves every session with nothing
 **Reliability**: per-file serialized write queues + a cross-process lock directory (stale locks
 stealable after 5s, re-confirmed before stealing) + atomic temp-and-rename writes (failed writes
 clean up their temp file); single-flight project-directory resolution against migration races;
-log-confirmed injection digests; distillation watermarks advance at attempt start (failed
+surface-visibility injection dedupe; distillation watermarks advance at attempt start (failed
 windows are not retried — deliberate cost control).
 
 **Safety**: topic names are allowlist-validated (path traversal impossible by construction);

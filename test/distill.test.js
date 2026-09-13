@@ -22,16 +22,29 @@ async function runPreStep({ step = 1, claimed = [{ id: 'u1' }], entries = [{ cat
   registerInjection(ctx, store, () => ({
     enabled: true, injectBudgetChars: 4000, topicIndexInInject: false, proactivity: 'conservative',
   }))
-  // Mirror the real Session surface (DSH >= 0.1.2): the log is read through
-  // `snapshotEvents()`; there is no `events` property.
   const agent = { session: session ?? fakeSession([]) }
   const payload = { agent, messages: claimed, step, signal: { aborted: false } }
   const decision = await handlers.get('agent/pre-step')(payload, async () => ({ kind: 'enter', messages: [...claimed] }))
   return Object.assign(decision, { warnings, handlers, agent })
 }
 
-/** A minimal stand-in for `dsh-session`'s Session: header plus a log reader. */
-const fakeSession = (events, cwd = '/tmp/prestep-project') => ({ header: { cwd }, snapshotEvents: () => Object.freeze([...events]) })
+/**
+ * A minimal stand-in for `dsh-session`'s Session (DSH >= 0.1.2): a header, the
+ * log readers `eventAt(seq)` / `snapshotEvents()`, and the model-visible
+ * `surface.nodes`. Events are renumbered by position; `shadowed` lists the
+ * seqs a compaction `replace` removed from the surface while they stay in the
+ * log — exactly the distinction the injection dedupe must respect.
+ */
+function fakeSession(events, { cwd = '/tmp/prestep-project', shadowed = [] } = {}) {
+  const log = events.map((event, seq) => ({ ...event, seq }))
+  const hidden = new Set(shadowed)
+  return {
+    header: { cwd },
+    eventAt: (seq) => log[seq],
+    snapshotEvents: () => Object.freeze([...log]),
+    surface: { nodes: Object.freeze(log.map((event) => event.seq).filter((seq) => !hidden.has(seq))) },
+  }
+}
 
 /** Count plugin-authored reminders in a decision. */
 const reminders = (decision) =>
@@ -162,7 +175,7 @@ test('pre-step injects on a turn\'s first step only', async () => {
   for (const step of [2, 3, 9]) assert.equal(reminders(await runPreStep({ step })), 0)
 })
 
-test('pre-step reads the session log through snapshotEvents() and never warns', async () => {
+test('pre-step uses the real Session surface (DSH >= 0.1.2) and never warns', async () => {
   // Regression: the plugin used to read `session.events`, a getter DSH removed
   // in 0.1.2. On a real Session that threw inside pre-step, the catch swallowed
   // it, and every session's FIRST turn silently went without its reminder.
@@ -171,41 +184,61 @@ test('pre-step reads the session log through snapshotEvents() and never warns', 
   assert.deepEqual(decision.warnings, [], 'a real Session surface must not trip the injection catch')
 })
 
-test('pre-step seeds the dedupe digest from a resumed log', async () => {
-  // A resumed/forked session replays its log without emitting session/event,
-  // so the last plugin reminder already in the log must be discovered by
-  // scanning — otherwise the resumed turn injects a duplicate copy.
+/** The reminder a fresh first step would render, wrapped as a logged event. */
+async function loggedReminder() {
   const probe = await runPreStep({ step: 1 })
   const injected = probe.messages.find((message) => message.source?.plugin === PLUGIN_NAME)
-  const logged = { type: 'user/message', seq: 3, time: 0, data: injected }
+  return { type: 'user/message', seq: 0, time: 0, data: injected }
+}
+
+test('pre-step dedupes against the newest reminder the model can still see', async () => {
+  // A resumed/forked session replays its log without emitting session/event,
+  // so the plugin cannot rely on state it accumulated in-process: the newest
+  // reminder on the visible surface is the only ground truth. Here it matches
+  // the current render, so nothing is re-injected.
   const older = pluginEvent('<system-reminder>stale reminder</system-reminder>')
   older.data.source.plugin = PLUGIN_NAME
-  const resumed = fakeSession([userEvent('hi'), older, userEvent('again'), logged, assistantEvent('ok')])
+  const resumed = fakeSession([userEvent('hi'), older, userEvent('again'), await loggedReminder(), assistantEvent('ok')])
   const decision = await runPreStep({ step: 1, session: resumed })
-  assert.equal(reminders(decision), 0, 'the newest logged reminder matches the render, so nothing is re-injected')
+  assert.equal(reminders(decision), 0, 'the newest visible reminder matches the render, so nothing is re-injected')
   assert.deepEqual(decision.warnings, [])
 })
 
-test('pre-step retries seeding when the first scan throws', async () => {
-  // Marking the session seeded BEFORE the scan meant one exception (any
-  // exception) permanently disabled the resume dedupe for that session.
-  let calls = 0
-  const flaky = {
-    header: { cwd: '/tmp/prestep-project' },
-    snapshotEvents() {
-      calls += 1
-      if (calls === 1) throw new Error('transient')
-      return []
-    },
-  }
-  const first = await runPreStep({ step: 1, session: flaky })
-  assert.equal(reminders(first), 0, 'the failing step degrades to no reminder')
-  assert.equal(first.warnings.length, 1)
-  // Same registration, same session: the second first-step must scan again.
-  const payload = { agent: first.agent, messages: [{ id: 'u2' }], step: 1, signal: { aborted: false } }
-  const second = await first.handlers.get('agent/pre-step')(payload, async () => ({ kind: 'enter', messages: [{ id: 'u2' }] }))
-  assert.equal(calls, 2)
-  assert.equal(reminders(second), 1)
+test('pre-step re-injects after compaction shadows the reminder', async () => {
+  // Compaction replaces a surface range with an LLM-written summary that does
+  // not carry the reminder's text. The reminder stays in the LOG, but the
+  // model can no longer see it — so "already in the log" is the wrong test,
+  // and a session that outlives one compaction would otherwise lose its memory
+  // (and the memory_save rules) for the rest of its life.
+  const logged = await loggedReminder()
+  const summary = pluginEvent('<compacted-summary>earlier chat</compacted-summary>')
+  summary.data.source.plugin = 'dsh-compaction-basic'
+  // seqs: 0 user, 1 reminder, 2 assistant, 3 checkpoint summary (replaced 0..2)
+  const compacted = fakeSession([userEvent('hi'), logged, assistantEvent('ok'), summary], { shadowed: [0, 1, 2] })
+  const decision = await runPreStep({ step: 1, session: compacted })
+  assert.equal(reminders(decision), 1, 'the shadowed reminder is invisible, so the step re-injects one copy')
+  assert.deepEqual(decision.warnings, [])
+})
+
+test('pre-step stays quiet when compaction keeps the reminder in the visible tail', async () => {
+  // Compaction retains a verbatim tail. A reminder inside that tail is still
+  // model-visible, so re-injecting would duplicate it.
+  const logged = await loggedReminder()
+  const summary = pluginEvent('<compacted-summary>earlier chat</compacted-summary>')
+  summary.data.source.plugin = 'dsh-compaction-basic'
+  // seqs: 0 user, 1 assistant, 2 user, 3 reminder, 4 assistant, 5 summary (replaced 0..1 only)
+  const compacted = fakeSession([userEvent('old'), assistantEvent('old'), userEvent('hi'), logged, assistantEvent('ok'), summary], { shadowed: [0, 1] })
+  const decision = await runPreStep({ step: 1, session: compacted })
+  assert.equal(reminders(decision), 0)
+})
+
+test('pre-step re-injects when the newest visible reminder is stale', async () => {
+  // The memory changed since the visible reminder was written (or an older
+  // reminder is the newest one left visible): the render differs, inject.
+  const stale = pluginEvent('<system-reminder>stale reminder</system-reminder>')
+  stale.data.source.plugin = PLUGIN_NAME
+  const session = fakeSession([userEvent('hi'), stale, assistantEvent('ok')])
+  assert.equal(reminders(await runPreStep({ step: 1, session })), 1)
 })
 
 test('pre-step leaves an empty first step empty', async () => {
