@@ -10,21 +10,28 @@ import { applyOps, emptyParsed } from '../lib/store.js'
  * around the splice are covered without touching the filesystem.
  * @returns the decision the plugin returned for that step.
  */
-async function runPreStep({ step = 1, claimed = [{ id: 'u1' }], entries = [{ category: 'facts', text: 'a stored fact' }] } = {}) {
+async function runPreStep({ step = 1, claimed = [{ id: 'u1' }], entries = [{ category: 'facts', text: 'a stored fact' }], session } = {}) {
   const parsed = emptyParsed()
   if (entries.length > 0) {
     applyOps(parsed, entries.map((entry) => ({ op: 'add', ...entry, source: 'manual' })), { date: '2026-09-02' })
   }
   const store = { load: async () => ({ parsed }), listTopics: async () => [] }
   const handlers = new Map()
-  const ctx = { on: (name, handler) => handlers.set(name, handler), logger: { warn() {} } }
+  const warnings = []
+  const ctx = { on: (name, handler) => handlers.set(name, handler), logger: { warn: (...args) => warnings.push(args) } }
   registerInjection(ctx, store, () => ({
     enabled: true, injectBudgetChars: 4000, topicIndexInInject: false, proactivity: 'conservative',
   }))
-  const agent = { session: { header: { cwd: '/tmp/prestep-project' }, events: [] } }
+  // Mirror the real Session surface (DSH >= 0.1.2): the log is read through
+  // `snapshotEvents()`; there is no `events` property.
+  const agent = { session: session ?? fakeSession([]) }
   const payload = { agent, messages: claimed, step, signal: { aborted: false } }
-  return handlers.get('agent/pre-step')(payload, async () => ({ kind: 'enter', messages: [...claimed] }))
+  const decision = await handlers.get('agent/pre-step')(payload, async () => ({ kind: 'enter', messages: [...claimed] }))
+  return Object.assign(decision, { warnings, handlers, agent })
 }
+
+/** A minimal stand-in for `dsh-session`'s Session: header plus a log reader. */
+const fakeSession = (events, cwd = '/tmp/prestep-project') => ({ header: { cwd }, snapshotEvents: () => Object.freeze([...events]) })
 
 /** Count plugin-authored reminders in a decision. */
 const reminders = (decision) =>
@@ -153,6 +160,52 @@ test('pre-step injects on a turn\'s first step only', async () => {
   assert.equal(reminders(await runPreStep({ step: 1 })), 1)
   // Later steps carry no copy, so N memory_saves in a turn cannot stack up.
   for (const step of [2, 3, 9]) assert.equal(reminders(await runPreStep({ step })), 0)
+})
+
+test('pre-step reads the session log through snapshotEvents() and never warns', async () => {
+  // Regression: the plugin used to read `session.events`, a getter DSH removed
+  // in 0.1.2. On a real Session that threw inside pre-step, the catch swallowed
+  // it, and every session's FIRST turn silently went without its reminder.
+  const decision = await runPreStep({ step: 1 })
+  assert.equal(reminders(decision), 1)
+  assert.deepEqual(decision.warnings, [], 'a real Session surface must not trip the injection catch')
+})
+
+test('pre-step seeds the dedupe digest from a resumed log', async () => {
+  // A resumed/forked session replays its log without emitting session/event,
+  // so the last plugin reminder already in the log must be discovered by
+  // scanning — otherwise the resumed turn injects a duplicate copy.
+  const probe = await runPreStep({ step: 1 })
+  const injected = probe.messages.find((message) => message.source?.plugin === PLUGIN_NAME)
+  const logged = { type: 'user/message', seq: 3, time: 0, data: injected }
+  const older = pluginEvent('<system-reminder>stale reminder</system-reminder>')
+  older.data.source.plugin = PLUGIN_NAME
+  const resumed = fakeSession([userEvent('hi'), older, userEvent('again'), logged, assistantEvent('ok')])
+  const decision = await runPreStep({ step: 1, session: resumed })
+  assert.equal(reminders(decision), 0, 'the newest logged reminder matches the render, so nothing is re-injected')
+  assert.deepEqual(decision.warnings, [])
+})
+
+test('pre-step retries seeding when the first scan throws', async () => {
+  // Marking the session seeded BEFORE the scan meant one exception (any
+  // exception) permanently disabled the resume dedupe for that session.
+  let calls = 0
+  const flaky = {
+    header: { cwd: '/tmp/prestep-project' },
+    snapshotEvents() {
+      calls += 1
+      if (calls === 1) throw new Error('transient')
+      return []
+    },
+  }
+  const first = await runPreStep({ step: 1, session: flaky })
+  assert.equal(reminders(first), 0, 'the failing step degrades to no reminder')
+  assert.equal(first.warnings.length, 1)
+  // Same registration, same session: the second first-step must scan again.
+  const payload = { agent: first.agent, messages: [{ id: 'u2' }], step: 1, signal: { aborted: false } }
+  const second = await first.handlers.get('agent/pre-step')(payload, async () => ({ kind: 'enter', messages: [{ id: 'u2' }] }))
+  assert.equal(calls, 2)
+  assert.equal(reminders(second), 1)
 })
 
 test('pre-step leaves an empty first step empty', async () => {

@@ -35,7 +35,7 @@ dsh plugin --profile web add github:justhalfbit/dsh-plugin-memory
 
 本地开发安装：克隆本仓库后 `pnpm install`，再 `dsh plugin --profile web add link:/绝对路径/dsh-plugin-memory`。
 
-> 兼容性：支持 DSH `0.1.1-rc.x`（`latest`）与 `0.1.2-rc.1`（`next`，已实测端到端验证）；rc 阶段上游 API 可能变动，客户端模块表差异已在插件内做双版本回退。
+> 兼容性：需要 DSH `0.1.2` 及以上（已在 `0.1.2-rc.1` 与 `0.1.5-rc.2` 上端到端验证）。宿主端通过 `Session.snapshotEvents()` 读取会话日志（0.1.2 起取代了 `events` 访问器），因此不再支持 `0.1.1-rc.x`；rc 阶段上游 API 可能变动，客户端模块表差异已在插件内做双版本回退。
 
 ### 界面支持
 
