@@ -13,8 +13,11 @@ import { test } from 'node:test'
 
 const SOURCE = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
 
+/** `save` is fire-and-forget (the button's handler); let its awaits drain. */
+const settle = () => new Promise((resolve) => setImmediate(resolve))
+
 /** Evaluate the bundle and return its module exports. */
-function loadClient() {
+function loadClient({ document } = {}) {
 	let registered
 	const window = { __ModuleLoader__: { load: (record) => { registered = record } } }
 	const effects = []
@@ -35,7 +38,7 @@ function loadClient() {
 		},
 	}
 	const modules = { react: React, '@deepseek-ai/dsh-client-store': store }
-	new Function('window', 'document', SOURCE)(window, undefined)
+	new Function('window', 'document', SOURCE)(window, document)
 	const exports = registered.factory((id) => {
 		if (!(id in modules)) throw new Error(`module not found: ${id}`)
 		return modules[id]
@@ -43,13 +46,19 @@ function loadClient() {
 	return { id: registered.id, exports, effects }
 }
 
-/** An in-memory stand-in for `ctx.configForms.get('memory')`. */
-function fakeForm({ answer = true } = {}) {
+const SERVED = {
+	enabled: true, autoDistill: false, memoryDir: '', injectBudgetChars: 64000, distillMinChars: 2500,
+	cooldownTurns: 3, distillProvider: '', distillModel: '', maxEntriesPerCategory: 50,
+	topicIndexInInject: true, proactivity: 'conservative',
+}
+
+/** An in-memory stand-in for `ctx.configForms.get('memory')`; `user` overrides land in `value`. */
+function fakeForm({ answer = true, user = {} } = {}) {
 	let snapshot = {
 		status: 'ready',
-		value: { enabled: true, injectBudgetChars: 64000, proactivity: 'conservative' },
-		base: { enabled: true, injectBudgetChars: 64000, proactivity: 'conservative' },
-		user: {},
+		value: { ...SERVED, ...user },
+		base: { ...SERVED },
+		user: { ...user },
 		revision: 7,
 		writable: true,
 		mode: 'host',
@@ -115,7 +124,7 @@ test('registers nothing while the Host does not serve memory', () => {
 })
 
 test('a save sends one atomic mutation fenced at the revision drafts were read at', async () => {
-	const form = fakeForm()
+	const form = fakeForm({ user: { enabled: false, distillModel: 'cheap-model' } })
 	const { registrations } = mount(form)
 	const face = registrations[0].options.inject()
 	face.edit('injectBudgetChars', ' 9000 ')
@@ -123,7 +132,8 @@ test('a save sends one atomic mutation fenced at the revision drafts were read a
 	face.toggle('proactivity', 'eager')
 	face.resetField('enabled')
 	face.edit('distillModel', '')
-	await face.save()
+	face.save()
+	await settle()
 	assert.equal(form.calls.length, 1)
 	assert.equal(form.calls[0].expectedRevision, 7)
 	assert.deepEqual(form.calls[0].ops, [
@@ -142,7 +152,8 @@ test('a refused save (false, not a throw) keeps the drafts and reports failure',
 	const { registrations } = mount(form)
 	const face = registrations[0].options.inject()
 	face.edit('cooldownTurns', '5')
-	await face.save()
+	face.save()
+	await settle()
 	const state = face.hooks.memoryCard.getSnapshot()
 	assert.equal(state.failed, true)
 	assert.equal(state.dirty, true)
@@ -154,7 +165,8 @@ test('invalid numbers block the save', async () => {
 	const { registrations } = mount(form)
 	const face = registrations[0].options.inject()
 	face.edit('cooldownTurns', 'abc')
-	await face.save()
+	face.save()
+	await settle()
 	assert.equal(form.calls.length, 0)
 	assert.equal(face.hooks.memoryCard.getSnapshot().invalid, true)
 })
@@ -168,4 +180,74 @@ test('summary view renders the one-liner; page view renders the form', () => {
 	assert.equal(typeof component({ ...props, view: 'summary' }), 'string')
 	const page = component({ ...props, view: 'page' })
 	assert.equal(page.props.className, 'dshmem-page')
+})
+
+test('no-op edits are not dirty and never become overrides', async () => {
+	const form = fakeForm()
+	const { registrations } = mount(form)
+	const face = registrations[0].options.inject()
+	face.edit('injectBudgetChars', '64000 ') // back at the served value
+	face.toggle('enabled', true) // already true
+	face.resetField('cooldownTurns') // not overridden
+	face.edit('distillModel', '') // blank of a field that is not overridden
+	const state = face.hooks.memoryCard.getSnapshot()
+	assert.equal(state.dirty, false)
+	for (const field of ['injectBudgetChars', 'enabled', 'cooldownTurns', 'distillModel']) {
+		assert.equal(state.fields[field].overridden, false, field + ' must not show an override')
+	}
+	face.save()
+	await settle()
+	assert.equal(form.calls.length, 0)
+})
+
+test('a real edit after no-ops writes only the real change', async () => {
+	const form = fakeForm()
+	const { registrations } = mount(form)
+	const face = registrations[0].options.inject()
+	face.toggle('enabled', true)
+	form.bump({ revision: 9 })
+	face.edit('cooldownTurns', '6')
+	face.save()
+	await settle()
+	assert.equal(form.calls.length, 1)
+	assert.equal(form.calls[0].expectedRevision, 9, 'the fence pins at the first real change')
+	assert.deepEqual(form.calls[0].ops, [{ op: 'set', path: ['cooldownTurns'], value: 6 }])
+	assert.equal(face.hooks.memoryCard.getSnapshot().dirty, false)
+})
+
+test('blanking an overridden field plans a reset and drops its badge', () => {
+	const form = fakeForm({ user: { memoryDir: '/data/memory' } })
+	const { registrations } = mount(form)
+	const face = registrations[0].options.inject()
+	assert.equal(face.hooks.memoryCard.getSnapshot().fields.memoryDir.overridden, true)
+	face.edit('memoryDir', '  ')
+	const state = face.hooks.memoryCard.getSnapshot()
+	assert.equal(state.dirty, true)
+	assert.equal(state.fields.memoryDir.overridden, false)
+})
+
+test('a new edit clears the failure notice', async () => {
+	const form = fakeForm({ answer: false })
+	const { registrations } = mount(form)
+	const face = registrations[0].options.inject()
+	face.edit('cooldownTurns', '5')
+	face.save()
+	await settle()
+	assert.equal(face.hooks.memoryCard.getSnapshot().failed, true)
+	face.edit('cooldownTurns', '4')
+	assert.equal(face.hooks.memoryCard.getSnapshot().failed, false)
+})
+
+test('a reload refreshes the style tag an older build injected', () => {
+	const tag = { dataset: { pluginCss: 'dsh-plugin-memory/settings-card.css' }, textContent: '.dshmem-card{}' }
+	const appended = []
+	const document = {
+		querySelector: (selector) => (selector.includes('dsh-plugin-memory/settings-card.css') ? tag : null),
+		createElement: () => { throw new Error('must reuse the existing tag') },
+		head: { appendChild: (node) => appended.push(node) },
+	}
+	loadClient({ document })
+	assert.ok(tag.textContent.includes('.dshmem-page'))
+	assert.ok(!tag.textContent.includes('.dshmem-card'))
+	assert.equal(appended.length, 0)
 })
