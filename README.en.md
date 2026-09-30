@@ -45,12 +45,18 @@ stays under `~/.dsh/memory` for you to keep or delete.
 For local development: clone, `pnpm install`, then
 `dsh plugin --profile web add link:/absolute/path/dsh-plugin-memory`.
 
-> Compatibility: `0.7.0` requires DSH `0.2.0` or newer (verified on `0.2.0-rc.2`). DSH 0.2 rebuilt
+> Compatibility: `0.7.0` requires DSH `0.2.0` or newer (adapted to and tested against the `0.2.0-rc.2` sources). DSH 0.2 rebuilt
 > settings: the host `settings.register` and the browser `settingsScope` service are gone, replaced by
 > `.volatile()` Config fields and the shared `configForms` forms, and plugin settings moved from
 > Settings → Plugins to the Plugins page. Running `0.6.x` on DSH 0.2 leaves the Web UI stuck at
 > "Failed to load plugins / dsh-plugin-memory: pending (waiting for service: settingsScope)"; upgrade
-> to `0.7.0`. Stay on `0.6.1` (pin `github:justhalfbit/dsh-plugin-memory#a58965da8aea682eda4f49ece343c8d8c47e758f`) for DSH `0.1.x`.
+> to `0.7.x`.
+> Upgrading from DSH `0.1.x`: a `memory:` section you kept in `~/.dsh/settings.yaml` is **not migrated
+> automatically**. DSH 0.2 imports that file once, on its first start, renaming it to `settings.yaml.imported`, and
+> the `0.6.x` running at that moment had no editable Config, so the section was skipped. If you had customized
+> memory settings, copy them from the `memory:` section of `~/.dsh/settings.yaml.imported` into the settings page,
+> or into the profile's `cordis.patch.yml` in the format under [Settings](#settings).
+> Stay on `0.6.1` (pin `github:justhalfbit/dsh-plugin-memory#a58965da8aea682eda4f49ece343c8d8c47e758f`) for DSH `0.1.x`.
 
 ### Interface support
 
@@ -187,9 +193,10 @@ without remounting the plugin.
 
 ## Design
 
-**Why the host plane instead of an agent preset?** A DSH settings namespace registers once per
-process (preset plugins instantiate per session — the second session would collide), and memory
-is inherently cross-session, wanting one process-wide write queue. Root-context listeners on the
+**Why the host plane instead of an agent preset?** DSH 0.2 settings forms edit only uniquely
+addressed profile entries, and a preset plugin instantiates per session, so it would never be one
+editable settings entry; memory is also inherently cross-session, wanting one process-wide write
+queue. Root-context listeners on the
 host plane observe every agent's events, tools register globally, and `session.header.cwd`
 scopes everything per project — one instance serves every session with nothing lost.
 

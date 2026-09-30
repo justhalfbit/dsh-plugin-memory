@@ -35,10 +35,14 @@ dsh plugin --profile web add github:justhalfbit/dsh-plugin-memory
 
 本地开发安装：克隆本仓库后 `pnpm install`，再 `dsh plugin --profile web add link:/绝对路径/dsh-plugin-memory`。
 
-> 兼容性：`0.7.0` 起需要 DSH `0.2.0` 及以上（已在 `0.2.0-rc.2` 上验证）。0.2 重做了设置体系：
+> 兼容性：`0.7.0` 起需要 DSH `0.2.0` 及以上（按 `0.2.0-rc.2` 的源码适配并测试）。0.2 重做了设置体系：
 > 宿主端 `settings.register` 与浏览器端 `settingsScope` 服务均已移除，改为插件 Config 的 `.volatile()` 字段 +
 > `configForms` 共享表单，设置页也从「设置 → 插件」移到了「插件」页。在 DSH 0.2 上运行 `0.6.x` 会让 Web 端卡在
-> “Failed to load plugins / dsh-plugin-memory: pending (waiting for service: settingsScope)”，请升级到 `0.7.0`。
+> “Failed to load plugins / dsh-plugin-memory: pending (waiting for service: settingsScope)”，请升级到 `0.7.x`。
+> 从 DSH `0.1.x` 升级：旧版写在 `~/.dsh/settings.yaml` 的 `memory:` 节**不会自动迁移**。DSH 0.2 只在首次启动时把这个文件一次性导入并改名为
+> `settings.yaml.imported`，而那时运行的 `0.6.x` 还没有可编辑的 Config，这一节就被跳过了。
+> 如果你自定义过记忆设置，请到 `~/.dsh/settings.yaml.imported` 里找到 `memory:` 节，在设置页里重新填写，
+> 或者按下文「设置项」的格式写进 profile 的 `cordis.patch.yml`。
 > 仍在用 DSH `0.1.x` 的请固定安装 `0.6.1`（`github:justhalfbit/dsh-plugin-memory#a58965da8aea682eda4f49ece343c8d8c47e758f`）。
 
 ### 界面支持
@@ -160,8 +164,8 @@ host 半与界面无关；client 半（设置页）声明 `platform: "web"`，�
 
 ## 设计
 
-**为什么挂 host 平面而不是 agent preset？**DSH 的设置命名空间每进程只能注册一次
-（preset 插件每会话实例化一份，第二个会话必然撞车），且记忆天然跨会话、需要进程级单例的
+**为什么挂 host 平面而不是 agent preset？**DSH 0.2 的设置表单只能编辑 profile 里 id 唯一的条目，
+preset 插件每个会话实例化一份，没法对应到一个可编辑的设置条目；再加上记忆天然跨会话，需要进程级单例的
 写队列。host 平面的根上下文监听器能收到所有会话的事件，工具全局注册，按 `session.header.cwd`
 归属项目——单例服务多会话，能力无损。
 
