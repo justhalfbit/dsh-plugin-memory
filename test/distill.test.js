@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildDistillPrompt, extractWindow, parseDistillOutput, renderExisting, resolveTarget } from '../lib/distill.js'
-import { PLUGIN_NAME, allocateBudget, buildReminderMessage, registerInjection, renderMemoryReminder } from '../lib/inject.js'
+import { SOURCE_KIND, allocateBudget, buildReminderMessage, registerInjection, renderMemoryReminder } from '../lib/inject.js'
 import { applyOps, emptyParsed } from '../lib/store.js'
 
 /**
@@ -48,10 +48,10 @@ function fakeSession(events, { cwd = '/tmp/prestep-project', shadowed = [] } = {
 
 /** Count plugin-authored reminders in a decision. */
 const reminders = (decision) =>
-  decision.messages.filter((message) => message.source?.plugin === PLUGIN_NAME).length
+  decision.messages.filter((message) => message.source?.kind === SOURCE_KIND).length
 
 const userEvent = (text) => ({ type: 'user/message', seq: 0, time: 0, data: { id: 'u', role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } } })
-const pluginEvent = (text) => ({ type: 'user/message', seq: 0, time: 0, data: { id: 'p', role: 'user', content: [{ type: 'text', text }], source: { kind: 'plugin', plugin: 'x' } } })
+const pluginEvent = (text, kind = 'plugin:x') => ({ type: 'user/message', seq: 0, time: 0, data: { id: 'p', role: 'user', content: [{ type: 'text', text }], source: { kind } } })
 const assistantEvent = (text) => ({ type: 'assistant/message', seq: 0, time: 0, data: { turn: 1, step: 1, message: { id: 'a', role: 'assistant', content: [{ type: 'text', text }], source: { kind: 'model', provider: 'p', model: 'm' } } } })
 
 test('extractWindow keeps genuine user + assistant text only, from the watermark', () => {
@@ -146,8 +146,11 @@ test('renderMemoryReminder renders sections within budget and escapes the close 
 test('buildReminderMessage shape matches the logged user-message contract', () => {
   const message = buildReminderMessage('<system-reminder>x</system-reminder>')
   assert.equal(message.role, 'user')
-  assert.equal(message.source.kind, 'plugin')
-  assert.equal(message.source.plugin, 'dsh-plugin-memory')
+  // Session format v4 (DSH >= 0.2) refuses the retired { kind: 'plugin' }
+  // wrapper; third-party producers own `plugin:<name>`.
+  assert.equal(message.source.kind, 'plugin:dsh-plugin-memory')
+  assert.equal(SOURCE_KIND, 'plugin:dsh-plugin-memory')
+  assert.equal(Object.hasOwn(message.source, 'plugin'), false)
   assert.equal(message.content[0].type, 'text')
   assert.ok(typeof message.id === 'string' && message.id.length > 10)
 })
@@ -187,7 +190,7 @@ test('pre-step uses the real Session surface (DSH >= 0.1.2) and never warns', as
 /** The reminder a fresh first step would render, wrapped as a logged event. */
 async function loggedReminder() {
   const probe = await runPreStep({ step: 1 })
-  const injected = probe.messages.find((message) => message.source?.plugin === PLUGIN_NAME)
+  const injected = probe.messages.find((message) => message.source?.kind === SOURCE_KIND)
   return { type: 'user/message', seq: 0, time: 0, data: injected }
 }
 
@@ -196,8 +199,7 @@ test('pre-step dedupes against the newest reminder the model can still see', asy
   // so the plugin cannot rely on state it accumulated in-process: the newest
   // reminder on the visible surface is the only ground truth. Here it matches
   // the current render, so nothing is re-injected.
-  const older = pluginEvent('<system-reminder>stale reminder</system-reminder>')
-  older.data.source.plugin = PLUGIN_NAME
+  const older = pluginEvent('<system-reminder>stale reminder</system-reminder>', SOURCE_KIND)
   const resumed = fakeSession([userEvent('hi'), older, userEvent('again'), await loggedReminder(), assistantEvent('ok')])
   const decision = await runPreStep({ step: 1, session: resumed })
   assert.equal(reminders(decision), 0, 'the newest visible reminder matches the render, so nothing is re-injected')
@@ -211,8 +213,7 @@ test('pre-step re-injects after compaction shadows the reminder', async () => {
   // and a session that outlives one compaction would otherwise lose its memory
   // (and the memory_save rules) for the rest of its life.
   const logged = await loggedReminder()
-  const summary = pluginEvent('<compacted-summary>earlier chat</compacted-summary>')
-  summary.data.source.plugin = 'dsh-compaction-basic'
+  const summary = pluginEvent('<compacted-summary>earlier chat</compacted-summary>', 'compact-basic')
   // seqs: 0 user, 1 reminder, 2 assistant, 3 checkpoint summary (replaced 0..2)
   const compacted = fakeSession([userEvent('hi'), logged, assistantEvent('ok'), summary], { shadowed: [0, 1, 2] })
   const decision = await runPreStep({ step: 1, session: compacted })
@@ -224,8 +225,7 @@ test('pre-step stays quiet when compaction keeps the reminder in the visible tai
   // Compaction retains a verbatim tail. A reminder inside that tail is still
   // model-visible, so re-injecting would duplicate it.
   const logged = await loggedReminder()
-  const summary = pluginEvent('<compacted-summary>earlier chat</compacted-summary>')
-  summary.data.source.plugin = 'dsh-compaction-basic'
+  const summary = pluginEvent('<compacted-summary>earlier chat</compacted-summary>', 'compact-basic')
   // seqs: 0 user, 1 assistant, 2 user, 3 reminder, 4 assistant, 5 summary (replaced 0..1 only)
   const compacted = fakeSession([userEvent('old'), assistantEvent('old'), userEvent('hi'), logged, assistantEvent('ok'), summary], { shadowed: [0, 1] })
   const decision = await runPreStep({ step: 1, session: compacted })
@@ -235,8 +235,7 @@ test('pre-step stays quiet when compaction keeps the reminder in the visible tai
 test('pre-step re-injects when the newest visible reminder is stale', async () => {
   // The memory changed since the visible reminder was written (or an older
   // reminder is the newest one left visible): the render differs, inject.
-  const stale = pluginEvent('<system-reminder>stale reminder</system-reminder>')
-  stale.data.source.plugin = PLUGIN_NAME
+  const stale = pluginEvent('<system-reminder>stale reminder</system-reminder>', SOURCE_KIND)
   const session = fakeSession([userEvent('hi'), stale, assistantEvent('ok')])
   assert.equal(reminders(await runPreStep({ step: 1, session })), 1)
 })
@@ -257,7 +256,7 @@ test('pre-step bootstraps an empty memory rather than staying silent', async () 
   // never learned to write its first entry and stayed empty forever.
   const decision = await runPreStep({ step: 1, entries: [] })
   assert.equal(reminders(decision), 1)
-  const text = decision.messages.find((message) => message.source?.plugin === PLUGIN_NAME).content[0].text
+  const text = decision.messages.find((message) => message.source?.kind === SOURCE_KIND).content[0].text
   assert.ok(text.includes('has no entries yet'))
   assert.ok(text.includes('memory_save'))
   assert.ok(!text.includes('##'), 'an empty memory must not render an empty block')
