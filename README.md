@@ -14,7 +14,7 @@
 - 🤫 **可选后台蒸馏**（默认关）：每轮对话完成后静默提取记忆，零工具卡片、零对话痕迹，适合无人值守长任务
 - 📁 **按项目隔离**：以会话工作目录为粒度，目录名为可读的全路径编码 + 防碰撞哈希
 - 📝 **纯 Markdown 存储**：人可读、可手编、可 git 管理；无法解析的行在任何改写中原样保留
-- ⚙️ **设置面板**：浏览器卡片 + `settings.yaml` 双入口，全部配置热生效
+- ⚙️ **设置页**：「插件」页里本插件的详情页直接编辑，或写 profile 的 `cordis.patch.yml`；全部配置热生效
 - 🔒 **护栏完备**：内容哈希去重、每类条目上限、修剪顺序（手动条目最后淘汰）、注入预算、KV cache 友好的 digest 防重
 
 ## 安装
@@ -35,16 +35,20 @@ dsh plugin --profile web add github:justhalfbit/dsh-plugin-memory
 
 本地开发安装：克隆本仓库后 `pnpm install`，再 `dsh plugin --profile web add link:/绝对路径/dsh-plugin-memory`。
 
-> 兼容性：需要 DSH `0.1.2` 及以上（已在 `0.1.2-rc.1` 与 `0.1.5-rc.2` 上端到端验证）。宿主端通过 `Session.snapshotEvents()` 读取会话日志（0.1.2 起取代了 `events` 访问器），因此不再支持 `0.1.1-rc.x`；rc 阶段上游 API 可能变动，客户端模块表差异已在插件内做双版本回退。
+> 兼容性：`0.7.0` 起需要 DSH `0.2.0` 及以上（已在 `0.2.0-rc.2` 上验证）。0.2 重做了设置体系：
+> 宿主端 `settings.register` 与浏览器端 `settingsScope` 服务均已移除，改为插件 Config 的 `.volatile()` 字段 +
+> `configForms` 共享表单，设置页也从「设置 → 插件」移到了「插件」页。在 DSH 0.2 上运行 `0.6.x` 会让 Web 端卡在
+> “Failed to load plugins / dsh-plugin-memory: pending (waiting for service: settingsScope)”，请升级到 `0.7.0`。
+> 仍在用 DSH `0.1.x` 的请固定安装 `0.6.1`（`github:justhalfbit/dsh-plugin-memory#a58965da8aea682eda4f49ece343c8d8c47e758f`）。
 
 ### 界面支持
 
-| 运行形态 | 记忆核心（注入 / 蒸馏 / 工具 / 存储） | 设置卡片 |
+| 运行形态 | 记忆核心（注入 / 蒸馏 / 工具 / 存储） | 设置页 |
 |---|---|---|
-| `dsh web`（浏览器 GUI） | ✅ | ✅ |
-| `tui` / `headless` | ✅ 全部可用 | ❌ 改用 `settings.yaml`（同样热生效） |
+| `dsh web`（浏览器 GUI，本机访问） | ✅ | ✅ |
+| `tui` / `headless` | ✅ 全部可用 | ❌ 改写 profile 的 `cordis.patch.yml`（同样热生效） |
 
-host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`，仅在浏览器界面加载。
+host 半与界面无关；client 半（设置页）声明 `platform: "web"`，仅在浏览器界面加载。
 
 ## 工作方式
 
@@ -127,7 +131,19 @@ host 半与界面无关；client 半（设置卡片）声明 `platform: "web"`�
 
 ## 设置项
 
-设置入口：「设置 → 插件 → 插件配置 → 跨会话记忆」卡片，或 `~/.dsh/settings.yaml` 的 `memory:` 节。全部热生效。
+设置入口：侧边栏「插件」→「已安装」里的 `dsh-plugin-memory` 详情页。页面只在点「保存」时写入，并且整张表单
+一次性原子提交；如果期间设置被别处改过，这次保存会被拒绝，你的修改会保留下来。也可以直接编辑 profile 的
+`cordis.patch.yml`（例如 `~/.dsh/profiles/web/cordis.patch.yml`），按条目 id `memory` 写覆盖值：
+
+```yaml
+- id: memory
+  config:
+    proactivity: balanced
+    injectBudgetChars: 32000
+```
+
+手写覆盖时注意：一条 `id` 覆盖会替换该条目的整个 `config`，不会深度合并，所以要保留的字段都得一起写上。
+所有字段都是 volatile 的，修改后下一次注入或蒸馏立即生效，不会重载插件。
 
 | 字段 | 默认 | 说明 |
 |---|---|---|

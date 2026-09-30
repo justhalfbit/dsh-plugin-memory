@@ -20,7 +20,7 @@ further on index freshness and structural guardrails.
   readable full-path encoding plus a collision-proof hash
 - 📝 **Plain Markdown storage**: human-readable, hand-editable, git-friendly; unparseable lines
   survive every rewrite verbatim
-- ⚙️ **Settings panel**: a browser card and `settings.yaml`, all hot-reloaded
+- ⚙️ **Settings page**: this bundle's page on the Plugins page, or the profile's `cordis.patch.yml`; all hot-reloaded
 - 🔒 **Guardrails everywhere**: content-hash dedupe, per-category caps, prune order (manual
   entries evicted last), injection budget, KV-cache-friendly digest dedupe
 
@@ -45,16 +45,21 @@ stays under `~/.dsh/memory` for you to keep or delete.
 For local development: clone, `pnpm install`, then
 `dsh plugin --profile web add link:/absolute/path/dsh-plugin-memory`.
 
-> Compatibility: requires DSH `0.1.2` or newer (verified end-to-end on `0.1.2-rc.1` and `0.1.5-rc.2`). The host half reads the session log through `Session.snapshotEvents()`, which replaced the `events` getter in 0.1.2, so `0.1.1-rc.x` is no longer supported; upstream APIs may still move during rc — the client module-table drift is handled by an in-plugin fallback chain.
+> Compatibility: `0.7.0` requires DSH `0.2.0` or newer (verified on `0.2.0-rc.2`). DSH 0.2 rebuilt
+> settings: the host `settings.register` and the browser `settingsScope` service are gone, replaced by
+> `.volatile()` Config fields and the shared `configForms` forms, and plugin settings moved from
+> Settings → Plugins to the Plugins page. Running `0.6.x` on DSH 0.2 leaves the Web UI stuck at
+> "Failed to load plugins / dsh-plugin-memory: pending (waiting for service: settingsScope)"; upgrade
+> to `0.7.0`. Stay on `0.6.1` (pin `github:justhalfbit/dsh-plugin-memory#a58965da8aea682eda4f49ece343c8d8c47e758f`) for DSH `0.1.x`.
 
 ### Interface support
 
-| Runtime | Memory core (injection / distillation / tools / storage) | Settings card |
+| Runtime | Memory core (injection / distillation / tools / storage) | Settings page |
 |---|---|---|
-| `dsh web` (browser GUI) | ✅ | ✅ |
-| `tui` / `headless` | ✅ fully available | ❌ use `settings.yaml` (also hot-reloaded) |
+| `dsh web` (browser GUI, loopback) | ✅ | ✅ |
+| `tui` / `headless` | ✅ fully available | ❌ edit the profile's `cordis.patch.yml` (also hot-reloaded) |
 
-The host half is UI-agnostic; the client half (the settings card) declares `platform: "web"`
+The host half is UI-agnostic; the client half (the settings page) declares `platform: "web"`
 and loads only in the browser UI.
 
 ## How it works
@@ -151,8 +156,21 @@ session's latest routed request → the agent's own options.
 
 ## Settings
 
-Edit via Settings → Plugins → Plugin configuration → the memory card, or the `memory:` section
-of `~/.dsh/settings.yaml`. Everything applies live.
+Edit on the sidebar's **Plugins** page → **Installed** → `dsh-plugin-memory`. The page writes only
+on **Save**, as one atomic, revision-fenced mutation: if the settings changed elsewhere meanwhile, the
+save is refused and your drafts are kept. Or edit the profile's `cordis.patch.yml` (e.g.
+`~/.dsh/profiles/web/cordis.patch.yml`) with an override targeting entry id `memory`:
+
+```yaml
+- id: memory
+  config:
+    proactivity: balanced
+    injectBudgetChars: 32000
+```
+
+A hand-written override replaces the entry's whole `config` (no deep merge), so restate every field
+you want to keep. Every field is volatile: a change applies to the next injection or distillation
+without remounting the plugin.
 
 | Field | Default | Description |
 |---|---|---|

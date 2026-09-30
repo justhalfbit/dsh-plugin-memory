@@ -1,15 +1,18 @@
 # dsh-plugin-memory bundle patch: one host-plane row.
 #
 # The row's node half (lib/index.js) owns the cross-session memory store under
-# ~/.dsh/memory, registers the `memory` settings namespace, the seven global
-# memory tools, the `agent/pre-step` injection, and the opt-in `turn/end`
-# distillation (off by default; the conversation agent maintains memory itself).
-# Host-plane (not an agent preset row) because a settings namespace registers
-# once per process and the store is shared by every session.
+# ~/.dsh/memory, the seven global memory tools, the `agent/pre-step`
+# injection, and the opt-in `turn/end` distillation (off by default; the
+# conversation agent maintains memory itself). Host-plane (not an agent preset
+# row) because the store is shared by every session.
+#
+# The row id `memory` is also the settings address: DSH >= 0.2 edits a
+# plugin's volatile Config fields as its composition entry, persisting them as
+# an id-targeted override in the profile's cordis.patch.yml.
 #
 # Its `dsh.client` declaration makes the clientModules scanner serve
-# lib/client.js to the browser, which registers the settings card under
-# `settings.plugin.item` keyed by the `memory` namespace.
+# lib/client.js to the browser, which registers this bundle's settings page on
+# the Plugins page (`plugins.bundle.config`, keyed by the package name).
 - insert:
     - id: memory
       name: 'dsh-plugin-memory'
